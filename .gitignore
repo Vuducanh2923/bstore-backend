@@ -32,6 +32,7 @@
 /services/*/storage/framework/views/*
 /services/*/storage/logs/*.log
 /services/*/vendor
+/services/database/init/*dump*.sql
 Homestead.json
 Homestead.yaml
 Thumbs.db
