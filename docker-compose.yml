@@ -1,0 +1,172 @@
+name: bstore
+
+x-laravel-common-env: &laravel-common-env
+  APP_ENV: local
+  APP_KEY: ${APP_KEY:-base64:WUrgEIGJ0r9SXMXnvpf73cgFUSj1utIDBOxKrCJc6G8=}
+  APP_DEBUG: "true"
+  FRONTEND_URL: http://localhost:5173
+  CORS_ALLOWED_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000
+  APP_LOCALE: en
+  APP_FALLBACK_LOCALE: en
+  APP_FAKER_LOCALE: en_US
+  BCRYPT_ROUNDS: "12"
+  LOG_CHANNEL: stack
+  LOG_STACK: single
+  LOG_LEVEL: debug
+  SESSION_DRIVER: file
+  SESSION_LIFETIME: "120"
+  QUEUE_CONNECTION: sync
+  CACHE_STORE: file
+  FILESYSTEM_DISK: local
+
+x-database-common-env: &database-common-env
+  DB_HOST: database
+  DB_PORT: "3306"
+  DB_USERNAME: bstore_user
+  DB_PASSWORD: bstore_password
+  DB_WAIT_TIMEOUT: "120"
+  RUN_MIGRATIONS: "true"
+
+services:
+  database:
+    image: vuducanh2923/database:latest
+    container_name: bstore-database
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-bstore_root_password}
+      MYSQL_ROOT_HOST: "%"
+    ports:
+      - "3308:3306"
+    volumes:
+      - bstore_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - bstore
+
+  auth-service:
+    image: vuducanh2923/auth-service:latest
+    container_name: bstore-auth-service
+    restart: unless-stopped
+    environment:
+      <<: [*laravel-common-env, *database-common-env]
+      APP_NAME: AuthService
+      APP_URL: http://localhost:8001
+      DB_CONNECTION: bstore_auth
+      DB_DATABASE: bstore_auth_db
+      RUN_SEEDERS: "true"
+    ports:
+      - "8001:8001"
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - bstore
+
+  catalog-service:
+    image: vuducanh2923/catalog-service:latest
+    container_name: bstore-catalog-service
+    restart: unless-stopped
+    environment:
+      <<: [*laravel-common-env, *database-common-env]
+      APP_NAME: CatalogService
+      APP_URL: http://localhost:8002
+      DB_CONNECTION: bstore_catalog
+      DB_DATABASE: bstore_catalog_db
+    ports:
+      - "8002:8002"
+    volumes:
+      - bstore_catalog_uploads:/var/www/html/public/uploads
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - bstore
+
+  order-service:
+    image: vuducanh2923/order-service:latest
+    container_name: bstore-order-service
+    restart: unless-stopped
+    environment:
+      <<: [*laravel-common-env, *database-common-env]
+      APP_NAME: OrderService
+      APP_URL: http://localhost:8003
+      DB_CONNECTION: bstore_order
+      DB_DATABASE: bstore_order_db
+    ports:
+      - "8003:8003"
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - bstore
+
+  payment-service:
+    image: vuducanh2923/payment-service:latest
+    container_name: bstore-payment-service
+    restart: unless-stopped
+    environment:
+      <<: [*laravel-common-env, *database-common-env]
+      APP_NAME: PaymentService
+      APP_URL: http://localhost:8004
+      DB_CONNECTION: bstore_payment
+      DB_DATABASE: bstore_payment_db
+    ports:
+      - "8004:8004"
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - bstore
+
+  api-gateway:
+    image: vuducanh2923/api-gateway:latest
+    container_name: bstore-api-gateway
+    restart: unless-stopped
+    environment:
+      <<: *laravel-common-env
+      APP_NAME: ApiGateway
+      APP_URL: http://localhost:8000
+      AUTH_SERVICE_URL: http://auth-service:8001
+      CATALOG_SERVICE_URL: http://catalog-service:8002
+      ORDER_SERVICE_URL: http://order-service:8003
+      PAYMENT_SERVICE_URL: http://payment-service:8004
+      MICROSERVICE_TIMEOUT: "10"
+      WAIT_FOR_DB: "false"
+    ports:
+      - "8000:8000"
+    depends_on:
+      auth-service:
+        condition: service_started
+      catalog-service:
+        condition: service_started
+      order-service:
+        condition: service_started
+      payment-service:
+        condition: service_started
+    networks:
+      - bstore
+
+  frontend:
+    image: vuducanh2923/frontend:latest
+    container_name: bstore-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      api-gateway:
+        condition: service_started
+    networks:
+      - bstore
+
+networks:
+  bstore:
+    driver: bridge
+
+volumes:
+  bstore_mysql_data:
+  bstore_catalog_uploads:

@@ -1,67 +1,126 @@
 # BStore Backend Microservices
 
-Repo nay da duoc tach thanh monorepo microservices Laravel. Root repo chi dung de dieu phoi script/tai lieu; toan bo code chay thuc te nam trong `services/`.
+BStore Backend là hệ thống backend Laravel được tách theo kiến trúc microservices. Repository này có sẵn Dockerfile cho từng service và file Docker Compose ở root để người khác có thể clone về chạy nhanh bằng các image đã public trên Docker Hub.
 
-## Cau truc
+## Chạy Nhanh Bằng Docker
 
-| Service | Port | Trach nhiem |
+Yêu cầu:
+
+- Docker Desktop hoặc Docker Engine
+- Docker Compose v2
+
+Clone repository và chạy toàn bộ hệ thống:
+
+```powershell
+git clone <repository-url>
+cd bstore-backend
+docker compose up -d
+```
+
+Sau khi chạy xong, truy cập:
+
+- Frontend: `http://localhost:5173`
+- API Gateway: `http://localhost:8000/api`
+- Auth Service: `http://localhost:8001`
+- Catalog Service: `http://localhost:8002`
+- Order Service: `http://localhost:8003`
+- Payment Service: `http://localhost:8004`
+- MySQL: `localhost:3308`
+
+Xem log container:
+
+```powershell
+docker compose logs -f
+```
+
+Dừng hệ thống:
+
+```powershell
+docker compose down
+```
+
+Xóa toàn bộ container và dữ liệu database để chạy lại từ đầu:
+
+```powershell
+docker compose down -v
+docker compose up -d
+```
+
+## Image Docker Hub
+
+File `docker-compose.yml` trong repository dùng trực tiếp các image public sau:
+
+```text
+vuducanh2923/frontend:latest
+vuducanh2923/api-gateway:latest
+vuducanh2923/auth-service:latest
+vuducanh2923/catalog-service:latest
+vuducanh2923/order-service:latest
+vuducanh2923/payment-service:latest
+vuducanh2923/database:latest
+```
+
+Người dùng chỉ cần `docker compose up -d`, Docker sẽ tự pull các image này nếu máy chưa có.
+
+## Cấu Trúc Service
+
+| Service | Port | Vai trò |
 | --- | ---: | --- |
-| `services/api-gateway` | `8000` | Mot cua ngo API cho frontend, proxy request sang service phu hop |
-| `services/auth-service` | `8001` | Dang ky, dang nhap, user, role |
-| `services/catalog-service` | `8002` | Product, brand, category, variant, image, inventory, warranty policy |
-| `services/order-service` | `8003` | Cart, order, discount, warranty request |
-| `services/payment-service` | `8004` | Payment, payment transaction, invoice |
+| `frontend` | `5173` | Giao diện người dùng đã build sẵn và chạy bằng Nginx |
+| `api-gateway` | `8000` | Cổng API chính cho frontend, proxy request sang service phù hợp |
+| `auth-service` | `8001` | Đăng ký, đăng nhập, người dùng, vai trò |
+| `catalog-service` | `8002` | Sản phẩm, thương hiệu, danh mục, biến thể, hình ảnh, tồn kho |
+| `order-service` | `8003` | Giỏ hàng, đơn hàng, mã giảm giá, yêu cầu bảo hành |
+| `payment-service` | `8004` | Thanh toán, giao dịch thanh toán, hóa đơn |
+| `database` | `3308` | MySQL dùng chung container, mỗi service dùng database riêng |
 
-Gateway giu format endpoint cu, vi du:
-
-- `POST /api/auth/login` -> auth-service
-- `GET /api/products` -> catalog-service
-- `POST /api/orders` -> order-service
-- `POST /api/payments` -> payment-service
-
-## Cai dat lan dau
-
-Chay script setup de copy `.env`, cai dependency va tao app key cho tung service:
-
-```powershell
-.\scripts\setup-microservices.ps1
-```
-
-Neu muon lam thu cong, vao tung thu muc `services/*` va chay:
-
-```powershell
-copy .env.example .env
-composer install
-php artisan key:generate
-```
-
-## Database
-
-Moi service chi cau hinh database cua minh:
+Các database mặc định:
 
 - `auth-service`: `bstore_auth_db`
 - `catalog-service`: `bstore_catalog_db`
 - `order-service`: `bstore_order_db`
 - `payment-service`: `bstore_payment_db`
 
-Sau khi tao database trong MySQL, chay migrate theo tung service:
+Thông tin database trong Docker:
 
-```powershell
-cd services\auth-service; php artisan migrate --seed
-cd ..\catalog-service; php artisan migrate
-cd ..\order-service; php artisan migrate
-cd ..\payment-service; php artisan migrate
+```text
+host: database
+port: 3306
+username: bstore_user
+password: bstore_password
+root password: bstore_root_password
 ```
 
-## Chay local
+## Endpoint Chính
 
-Chay tat ca service bang script:
+Frontend nên gọi API qua Gateway:
+
+```text
+http://localhost:8000/api
+```
+
+Một số endpoint được giữ theo format cũ:
+
+- `POST /api/auth/login` -> `auth-service`
+- `GET /api/products` -> `catalog-service`
+- `POST /api/orders` -> `order-service`
+- `POST /api/payments` -> `payment-service`
+
+## Chạy Backend Từ Source
+
+Nếu muốn phát triển backend trực tiếp không qua image Docker Hub, cài dependency cho từng service:
+
+```powershell
+.\scripts\setup-microservices.ps1
+```
+
+Chạy tất cả service Laravel ở local:
 
 ```powershell
 .\scripts\start-microservices.ps1
 ```
 
-Hoac mo 5 terminal rieng:
+Hoặc chạy từng service thủ công:
 
 ```powershell
 cd services\auth-service; php artisan serve --host=127.0.0.1 --port=8001
@@ -71,95 +130,40 @@ cd services\payment-service; php artisan serve --host=127.0.0.1 --port=8004
 cd services\api-gateway; php artisan serve --host=127.0.0.1 --port=8000
 ```
 
-Frontend nen goi gateway:
+## Build Và Push Image
 
-```text
-http://127.0.0.1:8000/api
-```
+Dành cho maintainer khi cần build lại image mới và push lên Docker Hub. Cách này cần workspace local có cả `bstore-backend` và `bstore-frontend` cùng cấp, vì script sẽ dùng file compose build ở thư mục cha nếu có.
 
-## Chay bang Docker Compose
-
-File `docker-compose.yml` nam o thu muc cha, cung cap voi `bstore-backend` va `bstore-frontend`.
-
-Build va chay toan bo stack tu thu muc cha:
-
-```powershell
-cd ..
-docker compose up --build
-```
-
-Hoac chay tu trong thu muc backend:
-
-```powershell
-docker compose -f ..\docker-compose.yml up --build
-```
-
-Compose se tao MySQL container, tu dong tao 4 database domain, chay migrate cho cac service co database va seed role mac dinh cho `auth-service`. Cac cong expose ra host:
-
-- Gateway: `http://localhost:8000/api`
-- Auth service: `http://localhost:8001`
-- Catalog service: `http://localhost:8002`
-- Order service: `http://localhost:8003`
-- Payment service: `http://localhost:8004`
-- MySQL: `localhost:3308`
-
-Thong tin database mac dinh trong Docker:
-
-```text
-host: database
-port: 3306
-username: bstore_user
-password: bstore_password
-```
-
-Neu can tao lai database tu dau:
-
-```powershell
-docker compose -f ..\docker-compose.yml down -v
-docker compose -f ..\docker-compose.yml up --build
-```
-
-## Push image len Docker Hub
-
-Dang nhap Docker Hub truoc:
+Đăng nhập Docker Hub:
 
 ```powershell
 docker login
 ```
 
-Sau do build va push toan bo image:
+Build và push toàn bộ image:
 
 ```powershell
-.\scripts\push-dockerhub.ps1 -Namespace ten-dockerhub-cua-ban -Tag latest
+.\scripts\push-dockerhub.ps1 -Namespace vuducanh2923 -Tag latest
 ```
 
-Neu chi muon push mot vai service:
+Chỉ build và push một vài service:
 
 ```powershell
-.\scripts\push-dockerhub.ps1 -Namespace ten-dockerhub-cua-ban -Tag latest -Services api-gateway,frontend
+.\scripts\push-dockerhub.ps1 -Namespace vuducanh2923 -Tag latest -Services api-gateway,frontend
 ```
 
-Cac image da push co the dung truc tiep:
+Dockerfile của từng service nằm tại:
 
-```text
-vuducanh2923/api-gateway:latest
-vuducanh2923/auth-service:latest
-vuducanh2923/catalog-service:latest
-vuducanh2923/order-service:latest
-vuducanh2923/payment-service:latest
-vuducanh2923/database:latest
-vuducanh2923/frontend:latest
-```
+- `services/api-gateway/Dockerfile`
+- `services/auth-service/Dockerfile`
+- `services/catalog-service/Dockerfile`
+- `services/order-service/Dockerfile`
+- `services/payment-service/Dockerfile`
+- `services/database/Dockerfile`
 
-Nguoi khac co the chay stack bang file image-only o thu muc cha:
+## Ghi Chú Kiến Trúc
 
-```powershell
-docker compose -f docker-compose.hub.yml up -d
-```
-
-## Ghi chu kien truc
-
-- Khong tao foreign key xuyen service. Cac cot nhu `user_id`, `order_id`, `product_variant_id` la external reference.
-- CRUD tong quat da duoc tach theo domain, nen moi service chi expose resource minh so huu.
-- Khi can giao tiep nghiep vu phuc tap hon, uu tien goi qua gateway hoac them event/message broker thay vi truy cap database cua service khac.
-- Root repo khong con la mot Laravel app doc lap; khong chay `php artisan` o root nua.
+- Root repository không còn là một Laravel app độc lập, vì vậy không chạy `php artisan` ở root.
+- Mỗi service sở hữu database riêng và không tạo foreign key xuyên service.
+- Các cột như `user_id`, `order_id`, `product_variant_id` là external reference giữa các service.
+- Các luồng nghiệp vụ phức tạp nên đi qua API Gateway hoặc event/message broker thay vì truy cập trực tiếp database của service khác.
