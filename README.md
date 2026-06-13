@@ -1,59 +1,165 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# BStore Backend Microservices
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Repo nay da duoc tach thanh monorepo microservices Laravel. Root repo chi dung de dieu phoi script/tai lieu; toan bo code chay thuc te nam trong `services/`.
 
-## About Laravel
+## Cau truc
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+| Service | Port | Trach nhiem |
+| --- | ---: | --- |
+| `services/api-gateway` | `8000` | Mot cua ngo API cho frontend, proxy request sang service phu hop |
+| `services/auth-service` | `8001` | Dang ky, dang nhap, user, role |
+| `services/catalog-service` | `8002` | Product, brand, category, variant, image, inventory, warranty policy |
+| `services/order-service` | `8003` | Cart, order, discount, warranty request |
+| `services/payment-service` | `8004` | Payment, payment transaction, invoice |
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+Gateway giu format endpoint cu, vi du:
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+- `POST /api/auth/login` -> auth-service
+- `GET /api/products` -> catalog-service
+- `POST /api/orders` -> order-service
+- `POST /api/payments` -> payment-service
 
-## Learning Laravel
+## Cai dat lan dau
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+Chay script setup de copy `.env`, cai dependency va tao app key cho tung service:
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+```powershell
+.\scripts\setup-microservices.ps1
+```
 
-## Laravel Sponsors
+Neu muon lam thu cong, vao tung thu muc `services/*` va chay:
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+```powershell
+copy .env.example .env
+composer install
+php artisan key:generate
+```
 
-### Premium Partners
+## Database
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+Moi service chi cau hinh database cua minh:
 
-## Contributing
+- `auth-service`: `bstore_auth_db`
+- `catalog-service`: `bstore_catalog_db`
+- `order-service`: `bstore_order_db`
+- `payment-service`: `bstore_payment_db`
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+Sau khi tao database trong MySQL, chay migrate theo tung service:
 
-## Code of Conduct
+```powershell
+cd services\auth-service; php artisan migrate --seed
+cd ..\catalog-service; php artisan migrate
+cd ..\order-service; php artisan migrate
+cd ..\payment-service; php artisan migrate
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## Chay local
 
-## Security Vulnerabilities
+Chay tat ca service bang script:
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+```powershell
+.\scripts\start-microservices.ps1
+```
 
-## License
+Hoac mo 5 terminal rieng:
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+```powershell
+cd services\auth-service; php artisan serve --host=127.0.0.1 --port=8001
+cd services\catalog-service; php artisan serve --host=127.0.0.1 --port=8002
+cd services\order-service; php artisan serve --host=127.0.0.1 --port=8003
+cd services\payment-service; php artisan serve --host=127.0.0.1 --port=8004
+cd services\api-gateway; php artisan serve --host=127.0.0.1 --port=8000
+```
+
+Frontend nen goi gateway:
+
+```text
+http://127.0.0.1:8000/api
+```
+
+## Chay bang Docker Compose
+
+File `docker-compose.yml` nam o thu muc cha, cung cap voi `bstore-backend` va `bstore-frontend`.
+
+Build va chay toan bo stack tu thu muc cha:
+
+```powershell
+cd ..
+docker compose up --build
+```
+
+Hoac chay tu trong thu muc backend:
+
+```powershell
+docker compose -f ..\docker-compose.yml up --build
+```
+
+Compose se tao MySQL container, tu dong tao 4 database domain, chay migrate cho cac service co database va seed role mac dinh cho `auth-service`. Cac cong expose ra host:
+
+- Gateway: `http://localhost:8000/api`
+- Auth service: `http://localhost:8001`
+- Catalog service: `http://localhost:8002`
+- Order service: `http://localhost:8003`
+- Payment service: `http://localhost:8004`
+- MySQL: `localhost:3308`
+
+Thong tin database mac dinh trong Docker:
+
+```text
+host: database
+port: 3306
+username: bstore_user
+password: bstore_password
+```
+
+Neu can tao lai database tu dau:
+
+```powershell
+docker compose -f ..\docker-compose.yml down -v
+docker compose -f ..\docker-compose.yml up --build
+```
+
+## Push image len Docker Hub
+
+Dang nhap Docker Hub truoc:
+
+```powershell
+docker login
+```
+
+Sau do build va push toan bo image:
+
+```powershell
+.\scripts\push-dockerhub.ps1 -Namespace ten-dockerhub-cua-ban -Tag latest
+```
+
+Neu chi muon push mot vai service:
+
+```powershell
+.\scripts\push-dockerhub.ps1 -Namespace ten-dockerhub-cua-ban -Tag latest -Services api-gateway,frontend
+```
+
+Cac image da push co the dung truc tiep:
+
+```text
+vuducanh2923/api-gateway:latest
+vuducanh2923/auth-service:latest
+vuducanh2923/catalog-service:latest
+vuducanh2923/order-service:latest
+vuducanh2923/payment-service:latest
+vuducanh2923/database:latest
+vuducanh2923/frontend:latest
+```
+
+Nguoi khac co the chay stack bang file image-only o thu muc cha:
+
+```powershell
+docker compose -f docker-compose.hub.yml up -d
+```
+
+## Ghi chu kien truc
+
+- Khong tao foreign key xuyen service. Cac cot nhu `user_id`, `order_id`, `product_variant_id` la external reference.
+- CRUD tong quat da duoc tach theo domain, nen moi service chi expose resource minh so huu.
+- Khi can giao tiep nghiep vu phuc tap hon, uu tien goi qua gateway hoac them event/message broker thay vi truy cap database cua service khac.
+- Root repo khong con la mot Laravel app doc lap; khong chay `php artisan` o root nua.
