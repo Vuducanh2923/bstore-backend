@@ -1,9 +1,12 @@
 <?php
 
+use App\Http\Controllers\SwaggerController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ResourceController;
 use App\Http\Controllers\Api\UploadController;
 use Illuminate\Support\Facades\Route;
+
+Route::get('/docs/openapi.json', [SwaggerController::class, 'json'])->name('swagger.openapi');
 
 Route::post('/uploads/images', [UploadController::class, 'image']);
 

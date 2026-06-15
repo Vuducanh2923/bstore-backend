@@ -1,9 +1,12 @@
 <?php
 
+use App\Http\Controllers\SwaggerController;
 use App\Http\Controllers\Api\CartController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\ResourceController;
 use Illuminate\Support\Facades\Route;
+
+Route::get('/docs/openapi.json', [SwaggerController::class, 'json'])->name('swagger.openapi');
 
 Route::post('/carts', [CartController::class, 'store']);
 
