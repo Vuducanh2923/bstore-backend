@@ -16,6 +16,7 @@ class ProductImage extends Model
         'product_id',
         'product_variant_id',
         'image_url',
+        'public_id',
         'is_thumbnail',
     ];
 
@@ -24,6 +25,36 @@ class ProductImage extends Model
         'product_variant_id' => 'integer',
         'is_thumbnail' => 'boolean',
     ];
+
+    public static function resolveImageUrl(?string $value): ?string
+    {
+        if (! $value) {
+            return $value;
+        }
+
+        $imageUrl = trim($value);
+
+        if ($imageUrl === '' || preg_match('/^(https?:)?\/\//i', $imageUrl)) {
+            return $imageUrl;
+        }
+
+        $appUrl = rtrim((string) config('app.url'), '/');
+        $imagePath = ltrim($imageUrl, '/');
+
+        if (
+            str_starts_with(strtolower($imagePath), 'storage/')
+            || str_starts_with(strtolower($imagePath), 'uploads/')
+        ) {
+            return $appUrl.'/'.$imagePath;
+        }
+
+        return $appUrl.'/storage/'.$imagePath;
+    }
+
+    public function getImageUrlAttribute(?string $value): ?string
+    {
+        return self::resolveImageUrl($value);
+    }
 
     public function product()
     {

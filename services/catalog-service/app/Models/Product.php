@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 class Product extends Model
 {
@@ -21,6 +23,10 @@ class Product extends Model
         'description',
         'specifications',
         'price',
+        'sale_percent',
+        'discount_percent',
+        'sale_price',
+        'is_sale',
         'status',
     ];
 
@@ -30,7 +36,59 @@ class Product extends Model
         'warranty_policy_id' => 'integer',
         'specifications' => 'array',
         'price' => 'decimal:2',
+        'sale_percent' => 'decimal:2',
+        'discount_percent' => 'decimal:2',
+        'sale_price' => 'decimal:2',
+        'is_sale' => 'boolean',
     ];
+
+    public function usesTimestamps(): bool
+    {
+        return Schema::connection($this->getConnectionName())->hasColumn($this->getTable(), static::CREATED_AT)
+            && Schema::connection($this->getConnectionName())->hasColumn($this->getTable(), static::UPDATED_AT);
+    }
+
+    protected static function booted(): void
+    {
+        static::creating(function (Product $product): void {
+            $product->slug = static::uniqueSlugForName($product->name);
+        });
+
+        static::updating(function (Product $product): void {
+            if ($product->isDirty('name')) {
+                $product->slug = static::uniqueSlugForName($product->name, $product->getKey());
+            }
+        });
+    }
+
+    public static function uniqueSlugForName(string $name, ?int $ignoreId = null): string
+    {
+        $baseSlug = Str::slug($name) ?: 'product';
+        $baseSlug = Str::limit($baseSlug, 191, '');
+        $slug = $baseSlug;
+        $suffix = 2;
+
+        while (static::slugExists($slug, $ignoreId)) {
+            $suffixText = '-'.$suffix;
+            $slug = Str::limit($baseSlug, 191 - strlen($suffixText), '').$suffixText;
+            $suffix++;
+        }
+
+        return $slug;
+    }
+
+    private static function slugExists(string $slug, ?int $ignoreId = null): bool
+    {
+        return static::query()
+            ->where('slug', $slug)
+            ->when($ignoreId !== null, fn ($query) => $query->whereKeyNot($ignoreId))
+            ->exists();
+    }
+
+    public function getThumbnailAttribute(?string $value): ?string
+    {
+        return ProductImage::resolveImageUrl($value);
+    }
 
     public function category()
     {

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Banner;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Inventory;
@@ -18,6 +19,7 @@ use Illuminate\Http\Request;
 class ResourceController extends Controller
 {
     private const RESOURCES = [
+        'banners' => ['model' => Banner::class],
         'brands' => ['model' => Brand::class],
         'categories' => ['model' => Category::class],
         'products' => ['model' => Product::class, 'relations' => ['category', 'brand', 'variants', 'images', 'warrantyPolicy']],

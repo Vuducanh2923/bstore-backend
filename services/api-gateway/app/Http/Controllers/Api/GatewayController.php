@@ -19,8 +19,11 @@ class GatewayController extends Controller
         'roles' => 'auth',
         'users' => 'auth',
 
+        'admin' => 'catalog',
+        'banners' => 'catalog',
         'brands' => 'catalog',
         'categories' => 'catalog',
+        'home' => 'catalog',
         'inventories' => 'catalog',
         'inventory-transactions' => 'catalog',
         'inventory_transactions' => 'catalog',

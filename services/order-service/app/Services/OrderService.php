@@ -11,6 +11,8 @@ use Illuminate\Support\Str;
 
 class OrderService
 {
+    public function __construct(private readonly CatalogPricingService $catalogPricingService) {}
+
     public function all(): Collection
     {
         return Order::with(['items', 'discounts'])->orderByDesc('id')->get();
@@ -19,8 +21,10 @@ class OrderService
     public function create(array $data): Order
     {
         return DB::connection('bstore_order')->transaction(function () use ($data) {
-            $items = $data['items'] ?? [];
+            $items = $this->catalogPricingService->applyCurrentPrices($data['items'] ?? []);
             $discounts = $data['discounts'] ?? [];
+            $hasItems = $items !== [];
+            $hasDiscounts = $discounts !== [];
 
             unset($data['items'], $data['discounts']);
 
@@ -28,15 +32,17 @@ class OrderService
             $discountTotal = collect($discounts)->sum(fn (array $discount) => (float) ($discount['discount_amount'] ?? 0));
 
             $data['order_code'] = $data['order_code'] ?? $this->orderCode();
-            $data['total_amount'] = $data['total_amount'] ?? $itemTotal;
-            $data['discount_amount'] = $data['discount_amount'] ?? $discountTotal;
-            $data['final_amount'] = $data['final_amount'] ?? max((float) $data['total_amount'] - (float) $data['discount_amount'], 0);
+            $data['total_amount'] = $hasItems ? $itemTotal : ($data['total_amount'] ?? $itemTotal);
+            $data['discount_amount'] = $hasDiscounts ? $discountTotal : ($data['discount_amount'] ?? $discountTotal);
+            $data['final_amount'] = ($hasItems || $hasDiscounts)
+                ? max((float) $data['total_amount'] - (float) $data['discount_amount'], 0)
+                : ($data['final_amount'] ?? max((float) $data['total_amount'] - (float) $data['discount_amount'], 0));
 
             $order = Order::create($data);
 
             foreach ($items as $item) {
                 $item['order_id'] = $order->id;
-                $item['subtotal'] = $item['subtotal'] ?? $this->subtotal($item);
+                $item['subtotal'] = $this->subtotal($item);
 
                 OrderItem::create($item);
             }

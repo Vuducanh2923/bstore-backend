@@ -54,6 +54,7 @@ return new class extends Migration
             $table->string('color', 50)->nullable();
             $table->string('ram', 50)->nullable();
             $table->string('storage', 50)->nullable();
+            $table->json('specifications')->nullable();
             $table->decimal('price', 15, 2)->default(0);
             $table->string('sku', 191)->unique();
             $table->string('barcode', 191)->nullable();
@@ -65,6 +66,7 @@ return new class extends Migration
             $table->unsignedBigInteger('product_id')->index();
             $table->unsignedBigInteger('product_variant_id')->nullable()->index();
             $table->string('image_url', 500);
+            $table->string('public_id')->nullable();
             $table->boolean('is_thumbnail')->default(false);
         });
 

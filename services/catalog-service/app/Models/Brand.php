@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Schema;
 
 class Brand extends Model
 {
@@ -15,9 +16,16 @@ class Brand extends Model
     protected $fillable = [
         'name',
         'slug',
+        'logo',
         'description',
         'status',
     ];
+
+    public function usesTimestamps(): bool
+    {
+        return Schema::connection($this->getConnectionName())->hasColumn($this->getTable(), static::CREATED_AT)
+            && Schema::connection($this->getConnectionName())->hasColumn($this->getTable(), static::UPDATED_AT);
+    }
 
     public function products()
     {

@@ -3,36 +3,106 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\ProductResource;
 use App\Models\Product;
 use App\Services\ProductService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 
 class ProductController extends Controller
 {
-    public function __construct(private readonly ProductService $productService)
-    {
-    }
+    public function __construct(private readonly ProductService $productService) {}
 
     public function index(Request $request): JsonResponse
     {
+        $products = $this->productService->paginatedList($request->only([
+            'page',
+            'limit',
+            'per_page',
+            'category_id',
+            'category',
+            'brand_id',
+            'brand',
+            'keyword',
+            'search',
+            'status',
+            'sort',
+        ]));
+
         return response()->json([
             'success' => true,
-            'data' => $this->productService->all($request->only([
-                'category_id',
-                'category',
-                'keyword',
-                'status',
-            ])),
+            'message' => 'Success',
+            'data' => $products->items(),
+            'pagination' => [
+                'page' => $products->currentPage(),
+                'limit' => $products->perPage(),
+                'total' => $products->total(),
+                'totalPages' => $products->lastPage(),
+            ],
         ]);
     }
 
-    public function show(int $id): JsonResponse
+    public function sale(Request $request): JsonResponse
     {
-        $product = $this->productService->find($id);
+        $products = $this->productService->salePaginatedList($request->only([
+            'page',
+            'limit',
+            'per_page',
+            'category_id',
+            'category',
+            'brand_id',
+            'brand',
+            'keyword',
+            'search',
+            'status',
+        ]));
 
-        if (!$product) {
+        return response()->json([
+            'success' => true,
+            'message' => 'Success',
+            'data' => $products->items(),
+            'pagination' => [
+                'page' => $products->currentPage(),
+                'limit' => $products->perPage(),
+                'total' => $products->total(),
+                'totalPages' => $products->lastPage(),
+            ],
+        ]);
+    }
+
+    public function newProducts(Request $request): JsonResponse
+    {
+        $products = $this->productService->newPaginatedList($request->only([
+            'page',
+            'limit',
+            'per_page',
+            'category_id',
+            'category',
+            'brand_id',
+            'brand',
+            'keyword',
+            'search',
+            'status',
+        ]));
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Success',
+            'data' => $products->items(),
+            'pagination' => [
+                'page' => $products->currentPage(),
+                'limit' => $products->perPage(),
+                'total' => $products->total(),
+                'totalPages' => $products->lastPage(),
+            ],
+        ]);
+    }
+
+    public function show(string $slug): JsonResponse
+    {
+        $product = $this->productService->findBySlug($slug);
+
+        if (! $product) {
             return response()->json([
                 'success' => false,
                 'message' => 'Khong tim thay san pham',
@@ -41,7 +111,24 @@ class ProductController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $product,
+            'data' => ProductResource::make($product),
+        ]);
+    }
+
+    public function showById(int $id): JsonResponse
+    {
+        $product = $this->productService->findById($id);
+
+        if (! $product) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Khong tim thay san pham',
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => ProductResource::make($product),
         ]);
     }
 
@@ -52,7 +139,7 @@ class ProductController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Tao san pham thanh cong',
-            'data' => $product,
+            'data' => ProductResource::make($product),
         ], 201);
     }
 
@@ -60,19 +147,19 @@ class ProductController extends Controller
     {
         $product = Product::find($id);
 
-        if (!$product) {
+        if (! $product) {
             return response()->json([
                 'success' => false,
                 'message' => 'Khong tim thay san pham',
             ], 404);
         }
 
-        $product = $this->productService->update($product, $this->validatedData($request, $id, false));
+        $product = $this->productService->update($product, $this->validatedData($request, false));
 
         return response()->json([
             'success' => true,
             'message' => 'Cap nhat san pham thanh cong',
-            'data' => $product,
+            'data' => ProductResource::make($product),
         ]);
     }
 
@@ -80,7 +167,7 @@ class ProductController extends Controller
     {
         $product = Product::find($id);
 
-        if (!$product) {
+        if (! $product) {
             return response()->json([
                 'success' => false,
                 'message' => 'Khong tim thay san pham',
@@ -95,7 +182,7 @@ class ProductController extends Controller
         ]);
     }
 
-    private function validatedData(Request $request, ?int $productId = null, bool $creating = true): array
+    private function validatedData(Request $request, bool $creating = true): array
     {
         $nameRule = $creating ? 'required' : 'sometimes';
         $requiredOnCreate = $creating ? 'required' : 'sometimes';
@@ -105,22 +192,25 @@ class ProductController extends Controller
             'brand_id' => [$requiredOnCreate, 'integer'],
             'warranty_policy_id' => ['nullable', 'integer'],
             'name' => [$nameRule, 'string', 'max:255'],
-            'slug' => [$requiredOnCreate, 'string', 'max:191', Rule::unique('bstore_catalog.products', 'slug')->ignore($productId)],
             'description' => ['nullable', 'string'],
             'specifications' => ['nullable'],
             'price' => [$requiredOnCreate, 'numeric', 'min:0'],
+            'sale_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'discount_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'status' => ['nullable', 'string', 'max:20'],
             'variants' => ['sometimes', 'array'],
             'variants.*.color' => ['nullable', 'string', 'max:50'],
             'variants.*.ram' => ['nullable', 'string', 'max:50'],
             'variants.*.storage' => ['nullable', 'string', 'max:50'],
+            'variants.*.specifications' => ['nullable', 'array'],
             'variants.*.price' => ['required_with:variants', 'numeric', 'min:0'],
             'variants.*.sku' => ['required_with:variants', 'string', 'max:191'],
             'variants.*.barcode' => ['nullable', 'string', 'max:191'],
             'variants.*.status' => ['nullable', 'string', 'max:20'],
             'images' => ['sometimes', 'array'],
             'images.*.product_variant_id' => ['nullable', 'integer'],
-            'images.*.image_url' => ['required_with:images', 'string', 'max:255'],
+            'images.*.image_url' => ['required_with:images', 'string', 'max:500'],
+            'images.*.public_id' => ['nullable', 'string', 'max:255'],
             'images.*.is_thumbnail' => ['nullable', 'boolean'],
             'warranty_policy' => ['sometimes', 'nullable', 'array'],
             'warranty_policy.name' => ['required_with:warranty_policy', 'string', 'max:255'],

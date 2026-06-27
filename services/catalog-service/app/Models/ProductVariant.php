@@ -17,6 +17,7 @@ class ProductVariant extends Model
         'color',
         'ram',
         'storage',
+        'specifications',
         'price',
         'sku',
         'barcode',
@@ -25,6 +26,7 @@ class ProductVariant extends Model
 
     protected $casts = [
         'product_id' => 'integer',
+        'specifications' => 'array',
         'price' => 'decimal:2',
     ];
 

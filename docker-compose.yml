@@ -77,6 +77,11 @@ services:
       APP_URL: http://localhost:8002
       DB_CONNECTION: bstore_catalog
       DB_DATABASE: bstore_catalog_db
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+      CLOUDINARY_URL: ${CLOUDINARY_URL:-}
+      CLOUDINARY_PREFIX: ${CLOUDINARY_PREFIX:-}
     ports:
       - "8002:8002"
     volumes:

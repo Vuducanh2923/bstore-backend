@@ -22,11 +22,22 @@ $mysqlConnection = [
     ]) : [],
 ];
 
+$catalogConnection = [
+    ...$mysqlConnection,
+    'url' => env('CATALOG_DB_URL'),
+    'host' => env('CATALOG_DB_HOST', env('DB_HOST', '127.0.0.1')),
+    'port' => env('CATALOG_DB_PORT', env('DB_PORT', '3308')),
+    'database' => env('CATALOG_DB_DATABASE', 'bstore_catalog_db'),
+    'username' => env('CATALOG_DB_USERNAME', env('DB_USERNAME', 'root')),
+    'password' => env('CATALOG_DB_PASSWORD', env('DB_PASSWORD', '')),
+];
+
 return [
     'default' => env('DB_CONNECTION', 'bstore_order'),
 
     'connections' => [
         'bstore_order' => $mysqlConnection,
+        'bstore_catalog' => $catalogConnection,
     ],
 
     'migrations' => [

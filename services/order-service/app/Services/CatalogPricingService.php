@@ -1,0 +1,103 @@
+<?php
+
+namespace App\Services;
+
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
+class CatalogPricingService
+{
+    public function applyCurrentPrices(array $items): array
+    {
+        $prices = $this->pricesByVariantId($items);
+
+        return array_map(function (array $item) use ($prices) {
+            $variantId = (int) ($item['product_variant_id'] ?? 0);
+
+            if ($variantId > 0 && $prices->has($variantId)) {
+                $item['price'] = $prices->get($variantId);
+            }
+
+            return $item;
+        }, $items);
+    }
+
+    private function pricesByVariantId(array $items): Collection
+    {
+        $variantIds = collect($items)
+            ->pluck('product_variant_id')
+            ->map(fn ($variantId) => (int) $variantId)
+            ->filter(fn (int $variantId) => $variantId > 0)
+            ->unique()
+            ->values();
+
+        if ($variantIds->isEmpty() || ! $this->catalogTablesAvailable()) {
+            return collect();
+        }
+
+        $productColumns = $this->productColumns();
+
+        if (! in_array('price', $productColumns, true)) {
+            return collect();
+        }
+
+        $select = [
+            'product_variants.id as product_variant_id',
+            'products.price',
+        ];
+
+        foreach (['sale_price', 'is_sale'] as $column) {
+            if (in_array($column, $productColumns, true)) {
+                $select[] = "products.{$column}";
+            }
+        }
+
+        return DB::connection('bstore_catalog')
+            ->table('product_variants')
+            ->join('products', 'products.id', '=', 'product_variants.product_id')
+            ->whereIn('product_variants.id', $variantIds->all())
+            ->select($select)
+            ->get()
+            ->mapWithKeys(fn (object $product) => [
+                (int) $product->product_variant_id => $this->effectivePrice($product),
+            ]);
+    }
+
+    private function effectivePrice(object $product): float
+    {
+        if (
+            property_exists($product, 'is_sale')
+            && property_exists($product, 'sale_price')
+            && (bool) $product->is_sale
+            && $product->sale_price !== null
+        ) {
+            return (float) $product->sale_price;
+        }
+
+        return (float) $product->price;
+    }
+
+    private function catalogTablesAvailable(): bool
+    {
+        try {
+            return Schema::connection('bstore_catalog')->hasTable('products')
+                && Schema::connection('bstore_catalog')->hasTable('product_variants');
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return false;
+        }
+    }
+
+    private function productColumns(): array
+    {
+        try {
+            return Schema::connection('bstore_catalog')->getColumnListing('products');
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return [];
+        }
+    }
+}
