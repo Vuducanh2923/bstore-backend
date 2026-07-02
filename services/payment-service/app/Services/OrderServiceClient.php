@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -43,9 +44,8 @@ class OrderServiceClient
         ]);
 
         try {
-            $response = Http::acceptJson()
+            $response = $this->request()
                 ->withHeaders($headers)
-                ->timeout((int) config('services.timeout', 10))
                 ->patch($url, $payload);
         } catch (ConnectionException $exception) {
             Log::error('payment.order_payment_paid.connection_failed', [
@@ -69,9 +69,8 @@ class OrderServiceClient
             'order_id' => $orderId,
             'order_service_url' => $baseUrl,
             'url' => $url,
-            'payload' => $payload,
             'status' => $response->status(),
-            'response' => $body,
+            'response_success' => $response->successful(),
         ]);
 
         return [
@@ -109,9 +108,7 @@ class OrderServiceClient
         ]);
 
         try {
-            $response = Http::acceptJson()
-                ->timeout((int) config('services.timeout', 10))
-                ->post($url, $payload);
+            $response = $this->request()->post($url, $payload);
         } catch (ConnectionException $exception) {
             Log::error('payment.order_cart_clear.connection_failed', [
                 'order_id' => $orderId,
@@ -132,9 +129,8 @@ class OrderServiceClient
         Log::info('payment.order_cart_clear.response', [
             'order_id' => $orderId,
             'url' => $url,
-            'payload' => $payload,
             'status' => $response->status(),
-            'response' => $body,
+            'response_success' => $response->successful(),
         ]);
 
         return [
@@ -179,9 +175,8 @@ class OrderServiceClient
         ]);
 
         try {
-            $response = Http::acceptJson()
+            $response = $this->request()
                 ->withHeaders($headers)
-                ->timeout((int) config('services.timeout', 10))
                 ->patch($url, $payload);
         } catch (ConnectionException $exception) {
             Log::error('payment.order_payment_failed.connection_failed', [
@@ -203,9 +198,8 @@ class OrderServiceClient
         Log::info('payment.order_payment_failed.response', [
             'order_id' => $orderId,
             'url' => $url,
-            'payload' => $payload,
             'status' => $response->status(),
-            'response' => $body,
+            'response_success' => $response->successful(),
         ]);
 
         return [
@@ -216,5 +210,13 @@ class OrderServiceClient
                 : 'Order Service tra ve loi khi cap nhat payment_status',
             'response' => $body,
         ];
+    }
+
+    private function request(): PendingRequest
+    {
+        return Http::acceptJson()
+            ->connectTimeout((int) config('services.connect_timeout', 2))
+            ->timeout((int) config('services.timeout', 5))
+            ->retry(2, 100, null, false);
     }
 }

@@ -43,6 +43,10 @@ class ProductService
         'status',
     ];
 
+    private ?array $cachedProductColumns = null;
+
+    private ?array $cachedBrandRelationColumns = null;
+
     public function __construct(private readonly CloudinaryService $cloudinaryService) {}
 
     public function paginatedList(
@@ -541,18 +545,22 @@ class ProductService
 
     private function productColumns(): array
     {
-        return Schema::connection('bstore_catalog')->getColumnListing('products');
+        return $this->cachedProductColumns ??= Schema::connection('bstore_catalog')->getColumnListing('products');
     }
 
     private function brandRelationColumns(): array
     {
+        if ($this->cachedBrandRelationColumns !== null) {
+            return $this->cachedBrandRelationColumns;
+        }
+
         $columns = ['id', 'name', 'slug', 'status'];
 
         if (Schema::connection('bstore_catalog')->hasColumn('brands', 'logo')) {
             $columns[] = 'logo';
         }
 
-        return $columns;
+        return $this->cachedBrandRelationColumns = $columns;
     }
 
     private function withSalePricing(array $data, array $productColumns, ?Product $product = null): array

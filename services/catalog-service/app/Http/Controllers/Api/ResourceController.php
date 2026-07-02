@@ -12,6 +12,7 @@ use App\Models\Product;
 use App\Models\ProductImage;
 use App\Models\ProductVariant;
 use App\Models\WarrantyPolicy;
+use App\Services\CatalogCache;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -33,6 +34,8 @@ class ResourceController extends Controller
         'warranty-policies' => ['model' => WarrantyPolicy::class],
         'warranty_policies' => ['model' => WarrantyPolicy::class],
     ];
+
+    public function __construct(private readonly CatalogCache $cache) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -61,7 +64,7 @@ class ResourceController extends Controller
 
         $record = $query->find((int) $id);
 
-        if (!$record) {
+        if (! $record) {
             return response()->json([
                 'success' => false,
                 'message' => 'Khong tim thay du lieu',
@@ -77,8 +80,9 @@ class ResourceController extends Controller
     public function store(Request $request): JsonResponse
     {
         [$modelClass, $relations, $resource] = $this->resolve($request);
-        $model = new $modelClass();
+        $model = new $modelClass;
         $record = $modelClass::create($this->payload($request, $model, $resource));
+        $this->bumpPublicCatalogCache($resource);
 
         return response()->json([
             'success' => true,
@@ -92,7 +96,7 @@ class ResourceController extends Controller
         [$modelClass, $relations, $resource] = $this->resolve($request);
         $record = $modelClass::find((int) $id);
 
-        if (!$record) {
+        if (! $record) {
             return response()->json([
                 'success' => false,
                 'message' => 'Khong tim thay du lieu',
@@ -101,6 +105,7 @@ class ResourceController extends Controller
 
         $record->fill($this->payload($request, $record, $resource));
         $record->save();
+        $this->bumpPublicCatalogCache($resource);
 
         return response()->json([
             'success' => true,
@@ -111,10 +116,10 @@ class ResourceController extends Controller
 
     public function destroy(Request $request, int|string $id): JsonResponse
     {
-        [$modelClass] = $this->resolve($request);
+        [$modelClass,, $resource] = $this->resolve($request);
         $record = $modelClass::find((int) $id);
 
-        if (!$record) {
+        if (! $record) {
             return response()->json([
                 'success' => false,
                 'message' => 'Khong tim thay du lieu',
@@ -122,6 +127,7 @@ class ResourceController extends Controller
         }
 
         $record->delete();
+        $this->bumpPublicCatalogCache($resource);
 
         return response()->json([
             'success' => true,
@@ -134,7 +140,7 @@ class ResourceController extends Controller
         $resource = (string) $request->route('resource');
         $config = self::RESOURCES[$resource] ?? null;
 
-        abort_if(!$config, 404, 'Resource khong duoc ho tro');
+        abort_if(! $config, 404, 'Resource khong duoc ho tro');
 
         return [
             $config['model'],
@@ -163,5 +169,12 @@ class ResourceController extends Controller
     private function fresh(Model $record, array $relations): Model
     {
         return $record->fresh($relations) ?? $record;
+    }
+
+    private function bumpPublicCatalogCache(string $resource): void
+    {
+        if (in_array($resource, ['banners', 'brands', 'categories', 'products'], true)) {
+            $this->cache->bump();
+        }
     }
 }

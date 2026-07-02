@@ -5,14 +5,31 @@ namespace App\Services;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentTransaction;
-use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 
 class PaymentService
 {
-    public function all(): Collection
+    private const DEFAULT_PER_PAGE = 15;
+
+    private const MAX_PER_PAGE = 100;
+
+    public function all(array $filters = []): LengthAwarePaginator
     {
-        return Payment::with(['transactions', 'invoices'])->orderByDesc('id')->get();
+        $perPage = min(
+            self::MAX_PER_PAGE,
+            max(1, (int) ($filters['limit'] ?? $filters['per_page'] ?? self::DEFAULT_PER_PAGE))
+        );
+        $page = max(1, (int) ($filters['page'] ?? 1));
+
+        return Payment::query()
+            ->select(['id', 'order_id', 'payment_method', 'payment_provider', 'transaction_code', 'amount', 'status', 'paid_at'])
+            ->with([
+                'transactions:id,payment_id,transaction_code,provider,amount,status',
+                'invoices:id,payment_id,order_id,invoice_code,total_amount,issued_at',
+            ])
+            ->orderByDesc('id')
+            ->paginate($perPage, ['*'], 'page', $page);
     }
 
     public function create(array $data): Payment
@@ -68,13 +85,14 @@ class PaymentService
                 ],
             ]);
 
-            return $payment->fresh(['transactions', 'invoices']);
+            return $payment->fresh() ?? $payment;
         });
     }
 
     public function paymentForVnpayTxnRef(string $txnRef): ?Payment
     {
         $payment = Payment::query()
+            ->select(['id', 'order_id', 'payment_method', 'payment_provider', 'transaction_code', 'amount', 'status', 'paid_at'])
             ->where('transaction_code', $txnRef)
             ->orderByDesc('id')
             ->first();
@@ -83,7 +101,9 @@ class PaymentService
             return $payment;
         }
 
-        return Payment::query()->find((int) $txnRef);
+        return Payment::query()
+            ->select(['id', 'order_id', 'payment_method', 'payment_provider', 'transaction_code', 'amount', 'status', 'paid_at'])
+            ->find((int) $txnRef);
     }
 
     public function recordVnpayCallback(Payment $payment, array $payload, bool $successful): Payment
@@ -112,13 +132,14 @@ class PaymentService
                 ],
             );
 
-            return $payment->fresh(['transactions', 'invoices']);
+            return $payment->fresh() ?? $payment;
         });
     }
 
     public function paymentForOrder(int $orderId): ?Payment
     {
         return Payment::query()
+            ->select(['id', 'order_id', 'payment_method', 'payment_provider', 'transaction_code', 'amount', 'status', 'paid_at'])
             ->where('order_id', $orderId)
             ->orderByDesc('id')
             ->first();
@@ -127,6 +148,7 @@ class PaymentService
     public function invoiceForOrder(int $orderId): ?Invoice
     {
         return Invoice::query()
+            ->select(['id', 'payment_id', 'order_id', 'invoice_code', 'total_amount', 'issued_at'])
             ->where('order_id', $orderId)
             ->orderByDesc('id')
             ->first();

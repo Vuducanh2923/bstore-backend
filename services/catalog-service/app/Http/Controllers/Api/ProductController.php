@@ -5,13 +5,17 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ProductResource;
 use App\Models\Product;
+use App\Services\CatalogCache;
 use App\Services\ProductService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class ProductController extends Controller
 {
-    public function __construct(private readonly ProductService $productService) {}
+    public function __construct(
+        private readonly ProductService $productService,
+        private readonly CatalogCache $cache,
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -44,57 +48,57 @@ class ProductController extends Controller
 
     public function sale(Request $request): JsonResponse
     {
-        $products = $this->productService->salePaginatedList($request->only([
-            'page',
-            'limit',
-            'per_page',
-            'category_id',
-            'category',
-            'brand_id',
-            'brand',
-            'keyword',
-            'search',
-            'status',
-        ]));
+        $payload = $this->cache->remember(
+            'products:sale:'.md5(json_encode($request->query())),
+            300,
+            fn (): array => $this->paginatedProductPayload(
+                $this->productService->salePaginatedList($request->only([
+                    'page',
+                    'limit',
+                    'per_page',
+                    'category_id',
+                    'category',
+                    'brand_id',
+                    'brand',
+                    'keyword',
+                    'search',
+                    'status',
+                ]))
+            ),
+        );
 
         return response()->json([
             'success' => true,
             'message' => 'Success',
-            'data' => $products->items(),
-            'pagination' => [
-                'page' => $products->currentPage(),
-                'limit' => $products->perPage(),
-                'total' => $products->total(),
-                'totalPages' => $products->lastPage(),
-            ],
+            ...$payload,
         ]);
     }
 
     public function newProducts(Request $request): JsonResponse
     {
-        $products = $this->productService->newPaginatedList($request->only([
-            'page',
-            'limit',
-            'per_page',
-            'category_id',
-            'category',
-            'brand_id',
-            'brand',
-            'keyword',
-            'search',
-            'status',
-        ]));
+        $payload = $this->cache->remember(
+            'products:new:'.md5(json_encode($request->query())),
+            300,
+            fn (): array => $this->paginatedProductPayload(
+                $this->productService->newPaginatedList($request->only([
+                    'page',
+                    'limit',
+                    'per_page',
+                    'category_id',
+                    'category',
+                    'brand_id',
+                    'brand',
+                    'keyword',
+                    'search',
+                    'status',
+                ]))
+            ),
+        );
 
         return response()->json([
             'success' => true,
             'message' => 'Success',
-            'data' => $products->items(),
-            'pagination' => [
-                'page' => $products->currentPage(),
-                'limit' => $products->perPage(),
-                'total' => $products->total(),
-                'totalPages' => $products->lastPage(),
-            ],
+            ...$payload,
         ]);
     }
 
@@ -135,6 +139,7 @@ class ProductController extends Controller
     public function store(Request $request): JsonResponse
     {
         $product = $this->productService->create($this->validatedData($request));
+        $this->cache->bump();
 
         return response()->json([
             'success' => true,
@@ -155,6 +160,7 @@ class ProductController extends Controller
         }
 
         $product = $this->productService->update($product, $this->validatedData($request, false));
+        $this->cache->bump();
 
         return response()->json([
             'success' => true,
@@ -175,11 +181,25 @@ class ProductController extends Controller
         }
 
         $this->productService->delete($product);
+        $this->cache->bump();
 
         return response()->json([
             'success' => true,
             'message' => 'Xoa san pham thanh cong',
         ]);
+    }
+
+    private function paginatedProductPayload($products): array
+    {
+        return [
+            'data' => $products->items(),
+            'pagination' => [
+                'page' => $products->currentPage(),
+                'limit' => $products->perPage(),
+                'total' => $products->total(),
+                'totalPages' => $products->lastPage(),
+            ],
+        ];
     }
 
     private function validatedData(Request $request, bool $creating = true): array

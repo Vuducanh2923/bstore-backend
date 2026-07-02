@@ -10,9 +10,9 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         DB::table('roles')->insertOrIgnore([
-            ['id' => 1, 'name' => 'admin', 'description' => 'Quan tri vien'],
-            ['id' => 2, 'name' => 'staff', 'description' => 'Nhan vien'],
-            ['id' => 3, 'name' => 'customer', 'description' => 'Khach hang'],
+            ['id' => 1, 'name' => 'ADMIN', 'description' => 'Quan tri vien'],
+            ['id' => 2, 'name' => 'STAFF', 'description' => 'Nhan vien'],
+            ['id' => 3, 'name' => 'CUSTOMER', 'description' => 'Khach hang'],
         ]);
     }
 }

@@ -37,7 +37,7 @@ class OrderNotificationService
         }
 
         try {
-            Mail::to($recipient)->send(new OrderNotificationMail($this->orderPayload($order), $eventType));
+            Mail::to($recipient)->queue(new OrderNotificationMail($this->orderPayload($order), $eventType));
         } catch (Throwable $exception) {
             Log::error('Could not send order notification email.', [
                 'order_id' => $order->id,

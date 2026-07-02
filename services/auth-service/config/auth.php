@@ -3,6 +3,7 @@
 use App\Models\User;
 
 return [
+    'token_key' => env('AUTH_TOKEN_KEY', env('AUTH_SERVICE_APP_KEY', env('APP_KEY'))),
 
     /*
     |--------------------------------------------------------------------------

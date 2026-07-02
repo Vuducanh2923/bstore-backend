@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -17,9 +18,7 @@ class CustomerEmailClient
         }
 
         try {
-            $response = Http::acceptJson()
-                ->connectTimeout(1)
-                ->timeout(min((int) config('services.timeout', 10), 3))
+            $response = $this->request()
                 ->get("{$baseUrl}/api/users/{$userId}");
         } catch (Throwable $exception) {
             Log::warning('Could not fetch customer email from Auth Service.', [
@@ -37,5 +36,13 @@ class CustomerEmailClient
         $email = data_get($response->json(), 'data.email');
 
         return filter_var($email, FILTER_VALIDATE_EMAIL) ? (string) $email : null;
+    }
+
+    private function request(): PendingRequest
+    {
+        return Http::acceptJson()
+            ->connectTimeout((int) config('services.connect_timeout', 2))
+            ->timeout((int) config('services.timeout', 5))
+            ->retry(2, 100, null, false);
     }
 }

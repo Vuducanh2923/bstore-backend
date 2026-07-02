@@ -20,12 +20,20 @@ class PaymentController extends Controller
         private readonly OrderServiceClient $orderServiceClient,
     ) {}
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
+        $payments = $this->paymentService->all($request->only(['page', 'limit', 'per_page']));
+
         return response()->json([
             'success' => true,
             'message' => 'Lay danh sach thanh toan thanh cong',
-            'data' => $this->paymentService->all(),
+            'data' => $payments->items(),
+            'pagination' => [
+                'page' => $payments->currentPage(),
+                'limit' => $payments->perPage(),
+                'total' => $payments->total(),
+                'totalPages' => $payments->lastPage(),
+            ],
         ]);
     }
 
@@ -107,7 +115,7 @@ class PaymentController extends Controller
 
     public function createVnpay(Request $request): JsonResponse
     {
-        Log::info('VNPAY create payload', $request->all());
+        Log::debug('VNPAY create payload', $request->all());
         $this->logVnpayCreateAuthContext($request);
 
         $validator = Validator::make($request->all(), [
@@ -176,7 +184,7 @@ class PaymentController extends Controller
     {
         $query = $request->query();
 
-        Log::info('VNPAY return query', $query);
+        Log::debug('VNPAY return query', $query);
 
         $missingParams = $this->missingVnpayReturnParams($query);
 
@@ -201,7 +209,7 @@ class PaymentController extends Controller
             $result = $this->vnpayService->handleReturn($query);
         } catch (Throwable $exception) {
             Log::error('vnpay.return_failed', [
-                'request' => $query,
+                'request_fields' => array_keys($query),
                 'message' => $exception->getMessage(),
             ]);
 
@@ -265,7 +273,7 @@ class PaymentController extends Controller
 
     public function vnpayIpn(Request $request): JsonResponse
     {
-        Log::info('VNPAY IPN query', $request->query());
+        Log::debug('VNPAY IPN query', $request->query());
 
         try {
             $result = $this->vnpayService->handleIpn($request->query());
@@ -273,7 +281,7 @@ class PaymentController extends Controller
             $response = ['RspCode' => '99', 'Message' => 'Unknown error'];
 
             Log::error('vnpay.ipn_failed', [
-                'request' => $request->query(),
+                'request_fields' => array_keys($request->query()),
                 'response' => $response,
                 'message' => $exception->getMessage(),
             ]);
@@ -301,7 +309,7 @@ class PaymentController extends Controller
         $authorization = $request->header('Authorization');
         $bearerToken = $request->bearerToken();
 
-        Log::info('VNPAY create auth context', [
+        Log::debug('VNPAY create auth context', [
             'route_middleware' => $routeMiddleware,
             'requires_auth' => collect($routeMiddleware)->contains(
                 fn (string $middleware) => str_contains($middleware, 'auth') || str_contains($middleware, 'token')
@@ -326,8 +334,8 @@ class PaymentController extends Controller
         ];
 
         Log::warning('VNPAY create validation failed', [
-            'request' => $request->all(),
-            'response' => $response,
+            'received_fields' => array_keys($request->all()),
+            'errors' => $errors,
         ]);
 
         return response()->json($response, 422);
@@ -380,7 +388,8 @@ class PaymentController extends Controller
             'order_id' => $payment->order_id,
             'payment_status' => $payment->status,
             'order_service_url' => config('services.order.url'),
-            'order_update' => $orderUpdate,
+            'order_update_status' => $orderUpdate['status'] ?? null,
+            'order_updated' => $orderUpdate['updated'] ?? false,
         ]);
 
         return response()->json([

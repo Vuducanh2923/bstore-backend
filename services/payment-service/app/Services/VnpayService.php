@@ -34,8 +34,10 @@ class VnpayService
         );
 
         Log::info('vnpay.payment_created', [
-            'payload' => $data,
-            'payment' => $payment->toArray(),
+            'payment_id' => $payment->id,
+            'order_id' => $payment->order_id,
+            'amount' => $payment->amount,
+            'txn_ref' => $payment->transaction_code,
         ]);
 
         $params = [
@@ -76,9 +78,11 @@ class VnpayService
             'vnpay_params' => $params,
         ];
 
-        Log::info('vnpay.create_payment_url', [
-            'request' => $data,
-            'response' => $response,
+        Log::debug('vnpay.create_payment_url', [
+            'order_id' => $payment->order_id,
+            'payment_id' => $payment->id,
+            'txn_ref' => $payment->transaction_code,
+            'response_fields' => array_keys($response),
         ]);
 
         return $response;
@@ -94,10 +98,11 @@ class VnpayService
         $result = $this->processCallback('ipn', $payload);
         $result['response'] = $this->ipnResponse($result['code']);
 
-        Log::info('vnpay.ipn.response', [
-            'request' => $payload,
+        Log::debug('vnpay.ipn.response', [
+            'request_fields' => array_keys($payload),
             'response' => $result['response'],
-            'result' => $result,
+            'code' => $result['code'],
+            'payment_status' => $result['payment_status'] ?? null,
         ]);
 
         return $result;
@@ -132,13 +137,13 @@ class VnpayService
             'vnpay' => $payload,
         ];
 
-        Log::info("vnpay.{$source}.request", [
+        Log::debug("vnpay.{$source}.request", [
             'source' => $source,
             'request' => $payload,
             'verified' => $verified,
         ]);
 
-        Log::info("vnpay.{$source}.signature_debug", [
+        Log::debug("vnpay.{$source}.signature_debug", [
             'source' => $source,
             'received_secureHash' => $signature['received_secure_hash'],
             'calculated_secureHash' => $signature['calculated_secure_hash'],
@@ -199,7 +204,8 @@ class VnpayService
                 'order_id' => $payment->order_id,
                 'payment_status' => $payment->status,
                 'order_service_url' => config('services.order.url'),
-                'response' => $orderUpdate,
+                'response_status' => $orderUpdate['status'] ?? null,
+                'updated' => $orderUpdate['updated'] ?? false,
             ]);
 
             $cartClear = $this->orderServiceClient->clearCartForPaidOrder((int) $payment->order_id);
@@ -226,8 +232,13 @@ class VnpayService
         $result = array_merge($result, $overrides);
 
         Log::info("vnpay.{$source}.processed", [
-            'request' => $payload,
-            'response' => $result,
+            'code' => $result['code'] ?? null,
+            'verified' => $result['verified'] ?? null,
+            'successful' => $result['successful'] ?? null,
+            'payment_status' => $result['payment_status'] ?? null,
+            'payment_id' => data_get($result, 'payment.id'),
+            'order_id' => data_get($result, 'payment.order_id'),
+            'order_updated' => $result['order_updated'] ?? false,
         ]);
 
         return $result;

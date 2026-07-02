@@ -79,7 +79,12 @@ class CartService
                 'deleted_items' => $deletedItems,
             ];
 
-            Log::info('order.cart_clear_after_payment.completed', $result);
+            Log::info('order.cart_clear_after_payment.completed', [
+                'order_id' => $result['order_id'],
+                'user_id' => $result['user_id'],
+                'cart_count' => count($result['cart_ids']),
+                'deleted_items' => $result['deleted_items'],
+            ]);
 
             return $result;
         });

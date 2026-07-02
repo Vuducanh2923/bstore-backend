@@ -8,6 +8,10 @@ use Illuminate\Support\Facades\Schema;
 
 class CatalogPricingService
 {
+    private ?bool $catalogTablesAvailable = null;
+
+    private ?array $productColumns = null;
+
     public function applyCurrentPrices(array $items): array
     {
         $prices = $this->pricesByVariantId($items);
@@ -87,24 +91,32 @@ class CatalogPricingService
 
     private function catalogTablesAvailable(): bool
     {
+        if ($this->catalogTablesAvailable !== null) {
+            return $this->catalogTablesAvailable;
+        }
+
         try {
-            return Schema::connection('bstore_catalog')->hasTable('products')
+            return $this->catalogTablesAvailable = Schema::connection('bstore_catalog')->hasTable('products')
                 && Schema::connection('bstore_catalog')->hasTable('product_variants');
         } catch (\Throwable $exception) {
             report($exception);
 
-            return false;
+            return $this->catalogTablesAvailable = false;
         }
     }
 
     private function productColumns(): array
     {
+        if ($this->productColumns !== null) {
+            return $this->productColumns;
+        }
+
         try {
-            return Schema::connection('bstore_catalog')->getColumnListing('products');
+            return $this->productColumns = Schema::connection('bstore_catalog')->getColumnListing('products');
         } catch (\Throwable $exception) {
             report($exception);
 
-            return [];
+            return $this->productColumns = [];
         }
     }
 }

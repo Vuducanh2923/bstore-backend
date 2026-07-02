@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Banner;
+use App\Services\CatalogCache;
 use App\Services\CloudinaryService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -13,23 +14,34 @@ use Throwable;
 
 class BannerController extends Controller
 {
-    public function __construct(private readonly CloudinaryService $cloudinaryService) {}
+    public function __construct(
+        private readonly CloudinaryService $cloudinaryService,
+        private readonly CatalogCache $cache,
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
-        $query = Banner::query();
+        $banners = $this->cache->remember(
+            'banners:index:'.md5(json_encode($request->query())),
+            600,
+            function () use ($request) {
+                $query = Banner::query();
 
-        if ($request->has('status')) {
-            $status = filter_var($request->query('status'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                if ($request->has('status')) {
+                    $status = filter_var($request->query('status'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
 
-            if ($status !== null) {
-                $query->where('status', $status);
+                    if ($status !== null) {
+                        $query->where('status', $status);
+                    }
+                }
+
+                return $this->orderedBannerQuery($query)->get();
             }
-        }
+        );
 
         return response()->json([
             'success' => true,
-            'data' => $this->orderedBannerQuery($query)->get(),
+            'data' => $banners,
         ]);
     }
 
@@ -75,6 +87,7 @@ class BannerController extends Controller
 
         $data = $this->onlyExistingBannerColumns($data);
         $banner = Banner::create($data);
+        $this->cache->bump();
 
         return response()->json([
             'success' => true,
@@ -108,6 +121,7 @@ class BannerController extends Controller
         $data = $this->onlyExistingBannerColumns($data);
         $banner->fill($data);
         $banner->save();
+        $this->cache->bump();
 
         if (array_key_exists('public_id', $data) && $oldPublicId && $oldPublicId !== $banner->public_id) {
             try {
@@ -146,6 +160,7 @@ class BannerController extends Controller
         }
 
         $banner->delete();
+        $this->cache->bump();
 
         return response()->json([
             'success' => true,

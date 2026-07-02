@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response as ClientResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -104,8 +105,7 @@ class GatewayController extends Controller
             $content = $request->getContent();
 
             if ($content !== '') {
-                $pending = Http::withHeaders($this->forwardHeaders($request))
-                    ->timeout((int) config('microservices.timeout'))
+                $pending = $this->pendingRequest($request)
                     ->withBody($content, $request->headers->get('Content-Type', 'application/json'));
 
                 return $this->send($pending, $request, $targetUrl, $options, $serviceName);
@@ -114,10 +114,22 @@ class GatewayController extends Controller
             $options['form_params'] = $request->request->all();
         }
 
-        $pending = Http::withHeaders($this->forwardHeaders($request))
-            ->timeout((int) config('microservices.timeout'));
+        $pending = $this->pendingRequest($request);
 
         return $this->send($pending, $request, $targetUrl, $options, $serviceName);
+    }
+
+    private function pendingRequest(Request $request): PendingRequest
+    {
+        $pending = Http::withHeaders($this->forwardHeaders($request))
+            ->connectTimeout((int) config('microservices.connect_timeout', 2))
+            ->timeout((int) config('microservices.timeout', 5));
+
+        if (in_array($request->method(), ['GET', 'HEAD', 'OPTIONS'], true)) {
+            $pending->retry(2, 100, null, false);
+        }
+
+        return $pending;
     }
 
     private function send($pending, Request $request, string $targetUrl, array $options, string $serviceName): Response|JsonResponse

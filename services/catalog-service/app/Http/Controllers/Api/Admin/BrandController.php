@@ -8,13 +8,17 @@ use App\Http\Requests\Admin\BrandUpdateRequest;
 use App\Http\Resources\BrandResource;
 use App\Models\Brand;
 use App\Services\BrandService;
+use App\Services\CatalogCache;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Throwable;
 
 class BrandController extends Controller
 {
-    public function __construct(private readonly BrandService $brandService) {}
+    public function __construct(
+        private readonly BrandService $brandService,
+        private readonly CatalogCache $cache,
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -44,6 +48,7 @@ class BrandController extends Controller
     {
         try {
             $brand = $this->brandService->create($request->validated(), $this->logoFile($request));
+            $this->cache->bump();
         } catch (Throwable $exception) {
             report($exception);
 
@@ -67,6 +72,7 @@ class BrandController extends Controller
 
         try {
             $brand = $this->brandService->update($brand, $request->validated(), $this->logoFile($request));
+            $this->cache->bump();
         } catch (Throwable $exception) {
             report($exception);
 
@@ -95,6 +101,8 @@ class BrandController extends Controller
             ], 409);
         }
 
+        $this->cache->bump();
+
         return response()->json([
             'success' => true,
             'message' => 'Xóa nhãn hàng thành công',
@@ -110,6 +118,7 @@ class BrandController extends Controller
         }
 
         $brand = $this->brandService->toggleStatus($brand);
+        $this->cache->bump();
 
         return response()->json([
             'success' => true,

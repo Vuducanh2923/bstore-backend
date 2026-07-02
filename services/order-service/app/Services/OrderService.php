@@ -5,7 +5,9 @@ namespace App\Services;
 use App\Models\Order;
 use App\Models\OrderDiscount;
 use App\Models\OrderItem;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -13,6 +15,16 @@ use Illuminate\Validation\ValidationException;
 
 class OrderService
 {
+    private const DEFAULT_PER_PAGE = 15;
+
+    private const MAX_PER_PAGE = 100;
+
+    private array $tableColumns = [];
+
+    private array $catalogTableExists = [];
+
+    private ?bool $ordersHasCreatedAt = null;
+
     public function __construct(
         private readonly CatalogPricingService $catalogPricingService,
         private readonly OrderNotificationService $notifications,
@@ -23,9 +35,22 @@ class OrderService
         return $this->newestFirst(Order::with(['items', 'discounts']))->get();
     }
 
-    public function adminOrders(): Collection
+    public function adminOrders(array $filters = []): LengthAwarePaginator
     {
-        return $this->newestFirst(Order::query())->get();
+        $query = Order::query();
+
+        if (! empty($filters['status'])) {
+            $query->where('status', $filters['status']);
+        }
+
+        if (! empty($filters['payment_status'])) {
+            $query->where('payment_status', $filters['payment_status']);
+        }
+
+        $perPage = $this->perPage($filters);
+        $page = max(1, (int) ($filters['page'] ?? 1));
+
+        return $this->newestFirst($query)->paginate($perPage, ['*'], 'page', $page);
     }
 
     public function findForAdmin(int $orderId): ?Order
@@ -81,6 +106,15 @@ class OrderService
         return $this->newestFirst(
             Order::with('items')->where('user_id', $userId)
         )->get();
+    }
+
+    public function paginatedForCustomer(int $userId, array $filters = []): Paginator
+    {
+        $query = Order::with('items')->where('user_id', $userId);
+        $perPage = $this->perPage($filters);
+        $page = max(1, (int) ($filters['page'] ?? 1));
+
+        return $this->newestFirst($query)->simplePaginate($perPage, ['*'], 'page', $page);
     }
 
     public function findForCustomer(int $userId, int $orderId): ?Order
@@ -356,25 +390,33 @@ class OrderService
 
     private function tableColumns(string $table): array
     {
+        if (array_key_exists($table, $this->tableColumns)) {
+            return $this->tableColumns[$table];
+        }
+
         try {
-            return Schema::connection('bstore_order')->hasTable($table)
+            return $this->tableColumns[$table] = Schema::connection('bstore_order')->hasTable($table)
                 ? Schema::connection('bstore_order')->getColumnListing($table)
                 : [];
         } catch (\Throwable $exception) {
             report($exception);
 
-            return [];
+            return $this->tableColumns[$table] = [];
         }
     }
 
     private function catalogTableExists(string $table): bool
     {
+        if (array_key_exists($table, $this->catalogTableExists)) {
+            return $this->catalogTableExists[$table];
+        }
+
         try {
-            return Schema::connection('bstore_catalog')->hasTable($table);
+            return $this->catalogTableExists[$table] = Schema::connection('bstore_catalog')->hasTable($table);
         } catch (\Throwable $exception) {
             report($exception);
 
-            return false;
+            return $this->catalogTableExists[$table] = false;
         }
     }
 
@@ -385,10 +427,20 @@ class OrderService
 
     private function newestFirst($query)
     {
-        if (Schema::connection('bstore_order')->hasColumn('orders', 'created_at')) {
+        $this->ordersHasCreatedAt ??= Schema::connection('bstore_order')->hasColumn('orders', 'created_at');
+
+        if ($this->ordersHasCreatedAt) {
             $query->orderByDesc('created_at');
         }
 
         return $query->orderByDesc('id');
+    }
+
+    private function perPage(array $filters): int
+    {
+        return min(
+            self::MAX_PER_PAGE,
+            max(1, (int) ($filters['limit'] ?? $filters['per_page'] ?? self::DEFAULT_PER_PAGE))
+        );
     }
 }

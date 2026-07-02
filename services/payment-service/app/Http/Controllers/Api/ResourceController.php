@@ -47,7 +47,7 @@ class ResourceController extends Controller
 
         $record = $query->find((int) $id);
 
-        if (!$record) {
+        if (! $record) {
             return response()->json([
                 'success' => false,
                 'message' => 'Khong tim thay du lieu',
@@ -64,7 +64,7 @@ class ResourceController extends Controller
     public function store(Request $request): JsonResponse
     {
         [$modelClass, $relations, $resource] = $this->resolve($request);
-        $model = new $modelClass();
+        $model = new $modelClass;
         $record = $modelClass::create($this->payload($request, $model, $resource));
 
         return response()->json([
@@ -79,7 +79,7 @@ class ResourceController extends Controller
         [$modelClass, $relations, $resource] = $this->resolve($request);
         $record = $modelClass::find((int) $id);
 
-        if (!$record) {
+        if (! $record) {
             return response()->json([
                 'success' => false,
                 'message' => 'Khong tim thay du lieu',
@@ -101,7 +101,7 @@ class ResourceController extends Controller
         [$modelClass] = $this->resolve($request);
         $record = $modelClass::find((int) $id);
 
-        if (!$record) {
+        if (! $record) {
             return response()->json([
                 'success' => false,
                 'message' => 'Khong tim thay du lieu',
@@ -122,7 +122,7 @@ class ResourceController extends Controller
         $resource = (string) $request->route('resource');
         $config = self::RESOURCES[$resource] ?? null;
 
-        abort_if(!$config, 404, 'Resource khong duoc ho tro');
+        abort_if(! $config, 404, 'Resource khong duoc ho tro');
 
         return [
             $config['model'],

@@ -25,23 +25,43 @@ class OrderController extends Controller
 
     public function customerOrders(Request $request): JsonResponse
     {
-        $orders = $this->orderService->forCustomer($this->authenticatedUserId($request));
+        $orders = $this->orderService->paginatedForCustomer(
+            $this->authenticatedUserId($request),
+            $request->only(['page', 'limit', 'per_page']),
+        );
 
         return response()->json([
             'success' => true,
             'message' => 'Lay danh sach don hang thanh cong',
-            'data' => $this->orderService->serializeOrders($orders),
+            'data' => $this->orderService->serializeOrders($orders->items()),
+            'pagination' => [
+                'page' => $orders->currentPage(),
+                'limit' => $orders->perPage(),
+                'hasMore' => $orders->hasMorePages(),
+            ],
         ]);
     }
 
-    public function adminOrders(): JsonResponse
+    public function adminOrders(Request $request): JsonResponse
     {
-        $orders = $this->orderService->adminOrders();
+        $orders = $this->orderService->adminOrders($request->only([
+            'page',
+            'limit',
+            'per_page',
+            'status',
+            'payment_status',
+        ]));
 
         return response()->json([
             'success' => true,
             'message' => 'Lay danh sach don hang thanh cong',
-            'data' => $this->orderService->serializeAdminOrders($orders),
+            'data' => $this->orderService->serializeAdminOrders($orders->items()),
+            'pagination' => [
+                'page' => $orders->currentPage(),
+                'limit' => $orders->perPage(),
+                'total' => $orders->total(),
+                'totalPages' => $orders->lastPage(),
+            ],
         ]);
     }
 

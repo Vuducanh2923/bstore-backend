@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Banner;
+use App\Services\CatalogCache;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Schema;
@@ -31,11 +32,17 @@ class HomeBannerController extends Controller
         'uploads/banners/pc-gaming.jpg' => 'https://res.cloudinary.com/demo/image/upload/c_fill,w_600,h_250,q_auto,f_auto/bike.jpg',
     ];
 
+    public function __construct(private readonly CatalogCache $cache) {}
+
     public function index(): JsonResponse
     {
         return response()->json([
             'success' => true,
-            'data' => $this->activeBannersByPosition(),
+            'data' => $this->cache->remember(
+                'home:banners',
+                600,
+                fn (): array => $this->activeBannersByPosition(),
+            ),
         ]);
     }
 

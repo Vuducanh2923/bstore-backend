@@ -69,7 +69,8 @@ services:
       DB_CONNECTION: bstore_auth
       DB_DATABASE: bstore_auth_db
       ORDER_SERVICE_URL: http://order-service:8003
-      MICROSERVICE_TIMEOUT: "10"
+      MICROSERVICE_CONNECT_TIMEOUT: "2"
+      MICROSERVICE_TIMEOUT: "5"
       RUN_SEEDERS: "true"
     ports:
       - "8001:8001"
@@ -115,7 +116,8 @@ services:
       DB_CONNECTION: bstore_order
       DB_DATABASE: bstore_order_db
       AUTH_SERVICE_URL: http://auth-service:8001
-      MICROSERVICE_TIMEOUT: "10"
+      MICROSERVICE_CONNECT_TIMEOUT: "2"
+      MICROSERVICE_TIMEOUT: "5"
     ports:
       - "8003:8003"
     depends_on:
@@ -135,7 +137,8 @@ services:
       DB_CONNECTION: bstore_payment
       DB_DATABASE: bstore_payment_db
       ORDER_SERVICE_URL: ${ORDER_SERVICE_URL:-http://order-service:8003}
-      MICROSERVICE_TIMEOUT: ${MICROSERVICE_TIMEOUT:-10}
+      MICROSERVICE_CONNECT_TIMEOUT: ${MICROSERVICE_CONNECT_TIMEOUT:-2}
+      MICROSERVICE_TIMEOUT: ${MICROSERVICE_TIMEOUT:-5}
       VNPAY_TMN_CODE: ${VNPAY_TMN_CODE:-}
       VNPAY_HASH_SECRET: ${VNPAY_HASH_SECRET:-}
       VNPAY_PAYMENT_URL: ${VNPAY_PAYMENT_URL:-https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
@@ -162,7 +165,8 @@ services:
       CATALOG_SERVICE_URL: http://catalog-service:8002
       ORDER_SERVICE_URL: http://order-service:8003
       PAYMENT_SERVICE_URL: http://payment-service:8004
-      MICROSERVICE_TIMEOUT: "10"
+      MICROSERVICE_CONNECT_TIMEOUT: "2"
+      MICROSERVICE_TIMEOUT: "5"
       WAIT_FOR_DB: "false"
     ports:
       - "8000:8000"
