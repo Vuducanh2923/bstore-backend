@@ -43,6 +43,7 @@ return new class extends Migration
             $table->string('payment_status', 20)->nullable()->default('unpaid');
             $table->text('cancel_reason')->nullable();
             $table->text('note')->nullable();
+            $table->timestamp('created_at')->nullable();
         });
 
         Schema::create('order_items', function (Blueprint $table) {

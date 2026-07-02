@@ -10,12 +10,15 @@ use App\Models\Order;
 use App\Models\OrderDiscount;
 use App\Models\OrderItem;
 use App\Models\WarrantyRequest;
+use App\Services\OrderNotificationService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class ResourceController extends Controller
 {
+    public function __construct(private readonly OrderNotificationService $notifications) {}
+
     private const RESOURCES = [
         'carts' => ['model' => Cart::class, 'relations' => ['items']],
         'cart-items' => ['model' => CartItem::class, 'relations' => ['cart']],
@@ -42,6 +45,7 @@ class ResourceController extends Controller
 
         return response()->json([
             'success' => true,
+            'message' => 'Lay danh sach du lieu thanh cong',
             'data' => $query->orderByDesc('id')->get(),
         ]);
     }
@@ -66,6 +70,7 @@ class ResourceController extends Controller
 
         return response()->json([
             'success' => true,
+            'message' => 'Lay du lieu thanh cong',
             'data' => $record,
         ]);
     }
@@ -97,11 +102,16 @@ class ResourceController extends Controller
 
         $record->fill($this->payload($request, $record, $resource));
         $record->save();
+        $freshRecord = $this->fresh($record, $relations);
+
+        if ($record instanceof Order && $record->wasChanged('status')) {
+            $this->notifications->sendStatusUpdated($freshRecord instanceof Order ? $freshRecord : $record);
+        }
 
         return response()->json([
             'success' => true,
             'message' => 'Cap nhat du lieu thanh cong',
-            'data' => $this->fresh($record, $relations),
+            'data' => $freshRecord,
         ]);
     }
 
@@ -122,6 +132,7 @@ class ResourceController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Xoa du lieu thanh cong',
+            'data' => null,
         ]);
     }
 

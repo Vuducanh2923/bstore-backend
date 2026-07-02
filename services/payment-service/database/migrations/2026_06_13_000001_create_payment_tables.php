@@ -35,6 +35,7 @@ return new class extends Migration
             $table->unsignedBigInteger('order_id')->index();
             $table->string('invoice_code', 191)->unique();
             $table->decimal('total_amount', 15, 2)->default(0);
+            $table->timestamp('issued_at')->nullable();
         });
     }
 

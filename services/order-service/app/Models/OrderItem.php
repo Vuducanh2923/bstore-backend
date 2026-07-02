@@ -14,8 +14,10 @@ class OrderItem extends Model
 
     protected $fillable = [
         'order_id',
+        'product_id',
         'product_variant_id',
         'product_name',
+        'product_image',
         'color',
         'ram',
         'storage',
@@ -26,6 +28,7 @@ class OrderItem extends Model
 
     protected $casts = [
         'order_id' => 'integer',
+        'product_id' => 'integer',
         'product_variant_id' => 'integer',
         'price' => 'decimal:2',
         'quantity' => 'integer',

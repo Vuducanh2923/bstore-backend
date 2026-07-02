@@ -50,8 +50,7 @@ class ProductService
         bool $saleOnly = false,
         int $defaultPerPage = self::DEFAULT_PER_PAGE,
         int $maxPerPage = self::MAX_PER_PAGE
-    ): LengthAwarePaginator
-    {
+    ): LengthAwarePaginator {
         $productColumns = $this->productColumns();
         $listColumns = array_values(array_intersect(self::LIST_COLUMNS, $productColumns));
 
@@ -331,20 +330,47 @@ class ProductService
     private function applySaleFilter($query, array $productColumns): void
     {
         $saleColumns = array_values(array_intersect(['discount_percent', 'sale_percent'], $productColumns));
+        $hasSalePriceColumn = in_array('sale_price', $productColumns, true);
 
         if ($saleColumns === []) {
-            in_array('is_sale', $productColumns, true)
-                ? $query->where('is_sale', true)
-                : $query->whereRaw('1 = 0');
+            if (in_array('is_sale', $productColumns, true)) {
+                $query->where('is_sale', true);
+
+                if ($hasSalePriceColumn) {
+                    $query->where('sale_price', '>', 0);
+                }
+            } else {
+                $query->whereRaw('1 = 0');
+            }
 
             return;
         }
 
-        $query->where(function ($saleQuery) use ($saleColumns) {
+        $query->where(function ($saleQuery) use ($saleColumns, $hasSalePriceColumn, $productColumns) {
             foreach ($saleColumns as $index => $column) {
                 $method = $index === 0 ? 'where' : 'orWhere';
 
-                $saleQuery->{$method}($column, '>', 0);
+                $saleQuery->{$method}(function ($percentQuery) use ($column, $hasSalePriceColumn) {
+                    $percentQuery
+                        ->where($column, '>', 0)
+                        ->where($column, '<', 100);
+
+                    if ($hasSalePriceColumn) {
+                        $percentQuery->where(function ($priceQuery) {
+                            $priceQuery
+                                ->whereNull('sale_price')
+                                ->orWhere('sale_price', '>', 0);
+                        });
+                    }
+                });
+            }
+
+            if ($hasSalePriceColumn && in_array('is_sale', $productColumns, true)) {
+                $saleQuery->orWhere(function ($priceQuery) {
+                    $priceQuery
+                        ->where('is_sale', true)
+                        ->where('sale_price', '>', 0);
+                });
             }
         });
     }
@@ -421,9 +447,11 @@ class ProductService
 
     private function listItem(Product $product): array
     {
-        $salePercent = $this->loadedAttribute($product, 'sale_percent');
-        $discountPercent = $this->resolvedDiscountPercent($product);
-        $salePrice = $this->resolvedSalePrice($product, $discountPercent);
+        $rawSalePercent = $this->loadedAttribute($product, 'sale_percent');
+        $rawDiscountPercent = $this->resolvedDiscountPercent($product);
+        $salePrice = $this->resolvedSalePrice($product, $rawDiscountPercent);
+        $salePercent = $salePrice !== null ? $rawSalePercent : null;
+        $discountPercent = $salePrice !== null ? $rawDiscountPercent : null;
 
         return [
             'id' => $product->id,
@@ -435,7 +463,8 @@ class ProductService
             'discount_percent' => $discountPercent,
             'sale_price' => $salePrice,
             'discounted_price' => $salePrice,
-            'is_sale' => (bool) ($this->loadedAttribute($product, 'is_sale') ?? false) || (float) ($discountPercent ?? 0) > 0,
+            'is_sale' => $salePrice !== null
+                && ((bool) ($this->loadedAttribute($product, 'is_sale') ?? false) || (float) ($discountPercent ?? 0) > 0),
             'status' => $this->loadedAttribute($product, 'status'),
             'thumbnail' => $product->thumbnail,
             'category_id' => $this->loadedAttribute($product, 'category_id'),
@@ -462,11 +491,19 @@ class ProductService
     {
         $salePrice = $this->loadedAttribute($product, 'sale_price');
 
-        if ($salePrice !== null || $discountPercent === null || $discountPercent === '' || (float) $discountPercent <= 0) {
-            return $salePrice;
+        if ($salePrice !== null) {
+            return (float) $salePrice > 0 ? $salePrice : null;
         }
 
-        return number_format((float) $product->price - ((float) $product->price * (float) $discountPercent / 100), 2, '.', '');
+        if ($discountPercent === null || $discountPercent === '' || (float) $discountPercent <= 0 || (float) $discountPercent >= 100) {
+            return null;
+        }
+
+        $calculatedSalePrice = (float) $product->price - ((float) $product->price * (float) $discountPercent / 100);
+
+        return $calculatedSalePrice > 0
+            ? number_format($calculatedSalePrice, 2, '.', '')
+            : null;
     }
 
     private function loadedAttribute(Product $product, string $attribute): mixed
@@ -550,7 +587,7 @@ class ProductService
             ? $data['sale_percent']
             : ($product?->getAttribute('sale_percent') ?? $product?->getAttribute('discount_percent'));
 
-        if ($salePercent === null || $salePercent === '' || (float) $salePercent <= 0) {
+        if ($salePercent === null || $salePercent === '' || (float) $salePercent <= 0 || (float) $salePercent >= 100) {
             $data['sale_percent'] = null;
             if ($hasDiscountColumn) {
                 $data['discount_percent'] = null;

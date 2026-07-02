@@ -189,6 +189,53 @@ test('product sale price is calculated when creating and updating a product', fu
         ->assertJsonPath('data.is_sale', false);
 });
 
+test('sale percent and discount percent cannot reduce product price to zero', function () {
+    $this->postJson('/api/products', [
+        ...productPayload('Free Sale Tablet'),
+        'sale_percent' => 100,
+    ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('sale_percent');
+
+    $this->postJson('/api/products', [
+        ...productPayload('Free Discount Tablet'),
+        'discount_percent' => 100,
+    ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('discount_percent');
+});
+
+test('legacy zero sale price is not exposed as an active sale', function () {
+    $product = Product::create([
+        ...productPayload('Legacy Zero Sale Tablet'),
+        'sale_percent' => 100,
+        'discount_percent' => 100,
+        'sale_price' => 0,
+        'is_sale' => true,
+    ]);
+
+    $this->getJson('/api/products')
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.id', $product->id)
+        ->assertJsonPath('data.0.sale_percent', null)
+        ->assertJsonPath('data.0.discount_percent', null)
+        ->assertJsonPath('data.0.sale_price', null)
+        ->assertJsonPath('data.0.discounted_price', null)
+        ->assertJsonPath('data.0.is_sale', false);
+
+    $this->getJson("/api/products/{$product->id}")
+        ->assertOk()
+        ->assertJsonPath('data.sale_percent', null)
+        ->assertJsonPath('data.discount_percent', null)
+        ->assertJsonPath('data.sale_price', null)
+        ->assertJsonPath('data.is_sale', false);
+
+    $this->getJson('/api/products/sale')
+        ->assertOk()
+        ->assertJsonCount(0, 'data');
+});
+
 test('product list is paginated and only returns summary fields', function () {
     Product::create([
         ...productPayload('Premium Tablet'),

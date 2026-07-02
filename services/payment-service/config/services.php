@@ -35,4 +35,19 @@ return [
         ],
     ],
 
+    'timeout' => (int) env('MICROSERVICE_TIMEOUT', 10),
+
+    'order' => [
+        'url' => env('ORDER_SERVICE_URL'),
+    ],
+
+    'vnpay' => [
+        'tmn_code' => env('VNPAY_TMN_CODE'),
+        'hash_secret' => env('VNPAY_HASH_SECRET'),
+        'payment_url' => env('VNPAY_PAYMENT_URL', 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html'),
+        'return_url' => env('VNPAY_RETURN_URL'),
+        'ipn_url' => env('VNPAY_IPN_URL'),
+        'timezone' => env('VNPAY_TIMEZONE', 'Asia/Ho_Chi_Minh'),
+    ],
+
 ];

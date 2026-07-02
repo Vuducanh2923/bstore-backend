@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentTransaction;
 use Illuminate\Database\Eloquent\Collection;
@@ -39,5 +40,95 @@ class PaymentService
 
             return $payment->fresh(['transactions', 'invoices']);
         });
+    }
+
+    public function createPendingVnpayPayment(int $orderId, float|int|string $amount, string $orderInfo): Payment
+    {
+        return DB::connection('bstore_payment')->transaction(function () use ($orderId, $amount, $orderInfo) {
+            $payment = Payment::create([
+                'order_id' => $orderId,
+                'payment_method' => 'vnpay',
+                'payment_provider' => 'vnpay',
+                'amount' => $amount,
+                'status' => 'pending',
+            ]);
+
+            $payment->transaction_code = (string) $payment->id;
+            $payment->save();
+
+            PaymentTransaction::create([
+                'payment_id' => $payment->id,
+                'transaction_code' => $payment->transaction_code,
+                'provider' => 'vnpay',
+                'amount' => $payment->amount,
+                'status' => 'pending',
+                'response_data' => [
+                    'event' => 'create_payment_url',
+                    'order_info' => $orderInfo,
+                ],
+            ]);
+
+            return $payment->fresh(['transactions', 'invoices']);
+        });
+    }
+
+    public function paymentForVnpayTxnRef(string $txnRef): ?Payment
+    {
+        $payment = Payment::query()
+            ->where('transaction_code', $txnRef)
+            ->orderByDesc('id')
+            ->first();
+
+        if ($payment || ! ctype_digit($txnRef)) {
+            return $payment;
+        }
+
+        return Payment::query()->find((int) $txnRef);
+    }
+
+    public function recordVnpayCallback(Payment $payment, array $payload, bool $successful): Payment
+    {
+        return DB::connection('bstore_payment')->transaction(function () use ($payment, $payload, $successful) {
+            $alreadyPaid = $payment->status === 'paid';
+            $status = ($successful || $alreadyPaid) ? 'paid' : 'failed';
+            $transactionCode = (string) ($payload['vnp_TransactionNo'] ?? $payload['vnp_TxnRef'] ?? $payment->transaction_code);
+            $amount = isset($payload['vnp_Amount']) ? ((int) $payload['vnp_Amount'] / 100) : $payment->amount;
+
+            $payment->status = $status;
+            $payment->payment_provider = 'vnpay';
+            $payment->paid_at = $status === 'paid' ? ($payment->paid_at ?? now()) : null;
+            $payment->save();
+
+            PaymentTransaction::updateOrCreate(
+                [
+                    'transaction_code' => $transactionCode,
+                    'provider' => 'vnpay',
+                ],
+                [
+                    'payment_id' => $payment->id,
+                    'amount' => $amount,
+                    'status' => $status,
+                    'response_data' => $payload,
+                ],
+            );
+
+            return $payment->fresh(['transactions', 'invoices']);
+        });
+    }
+
+    public function paymentForOrder(int $orderId): ?Payment
+    {
+        return Payment::query()
+            ->where('order_id', $orderId)
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    public function invoiceForOrder(int $orderId): ?Invoice
+    {
+        return Invoice::query()
+            ->where('order_id', $orderId)
+            ->orderByDesc('id')
+            ->first();
     }
 }

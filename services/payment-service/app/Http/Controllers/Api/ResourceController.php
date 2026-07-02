@@ -31,6 +31,7 @@ class ResourceController extends Controller
 
         return response()->json([
             'success' => true,
+            'message' => 'Lay danh sach du lieu thanh cong',
             'data' => $query->orderByDesc('id')->get(),
         ]);
     }
@@ -55,6 +56,7 @@ class ResourceController extends Controller
 
         return response()->json([
             'success' => true,
+            'message' => 'Lay du lieu thanh cong',
             'data' => $record,
         ]);
     }
@@ -111,6 +113,7 @@ class ResourceController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Xoa du lieu thanh cong',
+            'data' => null,
         ]);
     }
 

@@ -9,8 +9,42 @@ use Illuminate\Http\Request;
 
 class CartController extends Controller
 {
-    public function __construct(private readonly CartService $cartService)
+    public function __construct(private readonly CartService $cartService) {}
+
+    public function show(int|string $id): JsonResponse
     {
+        $cart = $this->cartService->find((int) $id);
+
+        if (! $cart) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Khong tim thay gio hang',
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $cart,
+        ]);
+    }
+
+    public function clearForPaidOrder(int|string $orderId): JsonResponse
+    {
+        $result = $this->cartService->clearForPaidOrder((int) $orderId);
+
+        if (! $result['order_found']) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Khong tim thay don hang de xoa gio hang',
+                'data' => $result,
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Da xoa san pham trong gio hang sau khi thanh toan thanh cong',
+            'data' => $result,
+        ]);
     }
 
     public function store(Request $request): JsonResponse

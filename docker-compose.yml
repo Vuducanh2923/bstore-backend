@@ -3,6 +3,7 @@ name: bstore
 x-laravel-common-env: &laravel-common-env
   APP_ENV: local
   APP_KEY: ${APP_KEY:-base64:WUrgEIGJ0r9SXMXnvpf73cgFUSj1utIDBOxKrCJc6G8=}
+  AUTH_TOKEN_KEY: ${AUTH_TOKEN_KEY:-base64:WUrgEIGJ0r9SXMXnvpf73cgFUSj1utIDBOxKrCJc6G8=}
   APP_DEBUG: "true"
   FRONTEND_URL: http://localhost:5173
   CORS_ALLOWED_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000
@@ -18,6 +19,15 @@ x-laravel-common-env: &laravel-common-env
   QUEUE_CONNECTION: sync
   CACHE_STORE: file
   FILESYSTEM_DISK: local
+  MAIL_MAILER: ${MAIL_MAILER:-smtp}
+  MAIL_SCHEME: ${MAIL_SCHEME:-null}
+  MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
+  MAIL_PORT: ${MAIL_PORT:-587}
+  MAIL_USERNAME: ${MAIL_USERNAME:-bstore.stu@gmail.com}
+  MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+  MAIL_ENCRYPTION: ${MAIL_ENCRYPTION:-tls}
+  MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-bstore.stu@gmail.com}
+  MAIL_FROM_NAME: ${MAIL_FROM_NAME:-BStore}
 
 x-database-common-env: &database-common-env
   DB_HOST: database
@@ -58,6 +68,8 @@ services:
       APP_URL: http://localhost:8001
       DB_CONNECTION: bstore_auth
       DB_DATABASE: bstore_auth_db
+      ORDER_SERVICE_URL: http://order-service:8003
+      MICROSERVICE_TIMEOUT: "10"
       RUN_SEEDERS: "true"
     ports:
       - "8001:8001"
@@ -102,6 +114,8 @@ services:
       APP_URL: http://localhost:8003
       DB_CONNECTION: bstore_order
       DB_DATABASE: bstore_order_db
+      AUTH_SERVICE_URL: http://auth-service:8001
+      MICROSERVICE_TIMEOUT: "10"
     ports:
       - "8003:8003"
     depends_on:
@@ -120,6 +134,14 @@ services:
       APP_URL: http://localhost:8004
       DB_CONNECTION: bstore_payment
       DB_DATABASE: bstore_payment_db
+      ORDER_SERVICE_URL: ${ORDER_SERVICE_URL:-http://order-service:8003}
+      MICROSERVICE_TIMEOUT: ${MICROSERVICE_TIMEOUT:-10}
+      VNPAY_TMN_CODE: ${VNPAY_TMN_CODE:-}
+      VNPAY_HASH_SECRET: ${VNPAY_HASH_SECRET:-}
+      VNPAY_PAYMENT_URL: ${VNPAY_PAYMENT_URL:-https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+      VNPAY_RETURN_URL: ${VNPAY_RETURN_URL:-http://localhost:5173/payment/vnpay-return}
+      VNPAY_IPN_URL: ${VNPAY_IPN_URL:-http://localhost:8000/api/payments/vnpay/ipn}
+      VNPAY_TIMEZONE: ${VNPAY_TIMEZONE:-Asia/Ho_Chi_Minh}
     ports:
       - "8004:8004"
     depends_on:

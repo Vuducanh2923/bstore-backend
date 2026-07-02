@@ -14,8 +14,29 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 class GatewayController extends Controller
 {
+    private const AUTH_ADMIN_PATH_PATTERNS = [
+        '#^admin/staff(?:/[0-9]+)?(?:/status)?$#',
+        '#^admin/customers(?:/[0-9]+)?(?:/status)?$#',
+        '#^admin/users/[0-9]+/role$#',
+    ];
+
+    private const ORDER_ADMIN_PATH_PATTERNS = [
+        '#^admin/orders(?:/[0-9]+)?(?:/status)?$#',
+    ];
+
+    private const INTERNAL_ORDER_PATH_PATTERNS = [
+        '#^internal/customers/[0-9]+/orders$#',
+        '#^internal/orders/[0-9]+/cart/clear$#',
+        '#^internal/orders/[0-9]+/payment-status$#',
+    ];
+
+    private const INTERNAL_PAYMENT_PATH_PATTERNS = [
+        '#^internal/orders/[0-9]+/(?:payment|invoice)$#',
+    ];
+
     private const ROUTE_MAP = [
         'auth' => 'auth',
+        'profile' => 'auth',
         'roles' => 'auth',
         'users' => 'auth',
 
@@ -39,6 +60,7 @@ class GatewayController extends Controller
         'cart-items' => 'order',
         'cart_items' => 'order',
         'carts' => 'order',
+        'customer' => 'order',
         'discounts' => 'order',
         'order-discounts' => 'order',
         'order_discounts' => 'order',
@@ -66,7 +88,7 @@ class GatewayController extends Controller
     {
         $serviceName = $this->resolveServiceName($path);
 
-        if (!$serviceName) {
+        if (! $serviceName) {
             return response()->json([
                 'success' => false,
                 'message' => 'Gateway khong tim thay service phu hop',
@@ -78,7 +100,7 @@ class GatewayController extends Controller
 
         if ($request->allFiles()) {
             $options['multipart'] = $this->multipartPayload($request);
-        } elseif (!$request->isMethod('GET') && !$request->isMethod('HEAD')) {
+        } elseif (! $request->isMethod('GET') && ! $request->isMethod('HEAD')) {
             $content = $request->getContent();
 
             if ($content !== '') {
@@ -115,9 +137,49 @@ class GatewayController extends Controller
 
     private function resolveServiceName(string $path): ?string
     {
-        $firstSegment = Str::of($path)->before('/')->toString();
+        $normalizedPath = trim($path, '/');
+
+        if ($this->isAuthAdminPath($normalizedPath)) {
+            return 'auth';
+        }
+
+        if ($this->matchesAny($normalizedPath, self::ORDER_ADMIN_PATH_PATTERNS)) {
+            return 'order';
+        }
+
+        if ($this->matchesAny($normalizedPath, self::INTERNAL_ORDER_PATH_PATTERNS)) {
+            return 'order';
+        }
+
+        if ($this->matchesAny($normalizedPath, self::INTERNAL_PAYMENT_PATH_PATTERNS)) {
+            return 'payment';
+        }
+
+        $firstSegment = Str::of($normalizedPath)->before('/')->toString();
 
         return self::ROUTE_MAP[$firstSegment] ?? null;
+    }
+
+    private function isAuthAdminPath(string $path): bool
+    {
+        foreach (self::AUTH_ADMIN_PATH_PATTERNS as $pattern) {
+            if (preg_match($pattern, $path) === 1) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function matchesAny(string $path, array $patterns): bool
+    {
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $path) === 1) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function targetUrl(string $serviceName, string $path): string

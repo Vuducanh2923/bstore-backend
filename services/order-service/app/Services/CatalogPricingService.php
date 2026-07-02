@@ -44,6 +44,7 @@ class CatalogPricingService
 
         $select = [
             'product_variants.id as product_variant_id',
+            'product_variants.price as variant_price',
             'products.price',
         ];
 
@@ -66,16 +67,22 @@ class CatalogPricingService
 
     private function effectivePrice(object $product): float
     {
+        $regularPrice = (float) ($product->variant_price > 0 ? $product->variant_price : $product->price);
+        $salePrice = property_exists($product, 'sale_price') && $product->sale_price !== null
+            ? (float) $product->sale_price
+            : null;
+
         if (
             property_exists($product, 'is_sale')
-            && property_exists($product, 'sale_price')
             && (bool) $product->is_sale
-            && $product->sale_price !== null
+            && $salePrice !== null
+            && $salePrice > 0
+            && $salePrice < $regularPrice
         ) {
-            return (float) $product->sale_price;
+            return $salePrice;
         }
 
-        return (float) $product->price;
+        return $regularPrice;
     }
 
     private function catalogTablesAvailable(): bool

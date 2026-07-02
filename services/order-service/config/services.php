@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'timeout' => (int) env('MICROSERVICE_TIMEOUT', 10),
+
+    'auth' => [
+        'url' => env('AUTH_SERVICE_URL'),
+    ],
+
 ];

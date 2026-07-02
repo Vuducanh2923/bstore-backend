@@ -72,6 +72,68 @@ return [
                 ],
             ],
         ],
+        '/payments/vnpay/create' => [
+            'post' => [
+                'tags' => ['Payments'],
+                'summary' => 'Create a VNPAY Sandbox payment URL',
+                'operationId' => 'createVnpayPaymentUrl',
+                'requestBody' => [
+                    'required' => true,
+                    'content' => [
+                        'application/json' => [
+                            'schema' => ['$ref' => '#/components/schemas/VnpayCreateRequest'],
+                        ],
+                    ],
+                ],
+                'responses' => [
+                    '201' => [
+                        'description' => 'VNPAY payment URL created',
+                        'content' => [
+                            'application/json' => [
+                                'schema' => ['$ref' => '#/components/schemas/VnpayCreateResponse'],
+                            ],
+                        ],
+                    ],
+                    '422' => ['$ref' => '#/components/responses/ValidationError'],
+                ],
+            ],
+        ],
+        '/payments/vnpay/return' => [
+            'get' => [
+                'tags' => ['Payments'],
+                'summary' => 'Handle VNPAY return callback',
+                'operationId' => 'handleVnpayReturn',
+                'responses' => [
+                    '200' => [
+                        'description' => 'VNPAY return processed',
+                        'content' => [
+                            'application/json' => [
+                                'schema' => ['$ref' => '#/components/schemas/VnpayCallbackResponse'],
+                            ],
+                        ],
+                    ],
+                    '400' => ['$ref' => '#/components/responses/ValidationError'],
+                    '404' => ['$ref' => '#/components/responses/NotFound'],
+                ],
+            ],
+        ],
+        '/payments/vnpay/ipn' => [
+            'get' => [
+                'tags' => ['Payments'],
+                'summary' => 'Handle VNPAY IPN callback',
+                'operationId' => 'handleVnpayIpn',
+                'responses' => [
+                    '200' => [
+                        'description' => 'VNPAY IPN acknowledgement',
+                        'content' => [
+                            'application/json' => [
+                                'schema' => ['$ref' => '#/components/schemas/VnpayIpnResponse'],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ],
         '/{resource}' => [
             'parameters' => [
                 ['$ref' => '#/components/parameters/PaymentResource'],
@@ -262,6 +324,63 @@ return [
                     'amount' => ['type' => 'number', 'format' => 'float', 'minimum' => 0],
                     'status' => ['type' => 'string', 'maxLength' => 20, 'example' => 'success'],
                     'response_data' => ['type' => 'object', 'nullable' => true, 'additionalProperties' => true],
+                ],
+            ],
+            'VnpayCreateRequest' => [
+                'type' => 'object',
+                'required' => ['order_id', 'amount'],
+                'properties' => [
+                    'order_id' => [
+                        'type' => 'integer',
+                        'description' => 'Order ID do Order Service da tao.',
+                        'example' => 123,
+                    ],
+                    'amount' => ['type' => 'integer', 'minimum' => 1000, 'example' => 90000],
+                    'order_info' => ['type' => 'string', 'nullable' => true, 'maxLength' => 255, 'example' => 'Thanh toan don hang 123'],
+                ],
+            ],
+            'VnpayCreateResponse' => [
+                'type' => 'object',
+                'properties' => [
+                    'success' => ['type' => 'boolean', 'example' => true],
+                    'message' => ['type' => 'string'],
+                    'data' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'payment_url' => ['type' => 'string', 'format' => 'uri'],
+                            'payment_id' => ['type' => 'integer'],
+                            'order_id' => ['type' => 'integer'],
+                            'amount' => ['type' => 'string', 'example' => '90000.00'],
+                            'txn_ref' => ['type' => 'string'],
+                            'return_url' => ['type' => 'string', 'format' => 'uri'],
+                            'ipn_url' => ['type' => 'string', 'format' => 'uri'],
+                            'vnpay_params' => ['type' => 'object', 'additionalProperties' => true],
+                        ],
+                    ],
+                ],
+            ],
+            'VnpayCallbackResponse' => [
+                'type' => 'object',
+                'properties' => [
+                    'success' => ['type' => 'boolean'],
+                    'message' => ['type' => 'string'],
+                    'data' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'verified' => ['type' => 'boolean'],
+                            'successful' => ['type' => 'boolean'],
+                            'payment_status' => ['type' => 'string', 'nullable' => true],
+                            'payment' => ['$ref' => '#/components/schemas/Payment'],
+                            'vnpay' => ['type' => 'object', 'additionalProperties' => true],
+                        ],
+                    ],
+                ],
+            ],
+            'VnpayIpnResponse' => [
+                'type' => 'object',
+                'properties' => [
+                    'RspCode' => ['type' => 'string', 'example' => '00'],
+                    'Message' => ['type' => 'string', 'example' => 'Confirm Success'],
                 ],
             ],
             'GenericResourceRequest' => [

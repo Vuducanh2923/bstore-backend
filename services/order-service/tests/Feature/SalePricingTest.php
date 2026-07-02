@@ -60,6 +60,7 @@ beforeEach(function () {
         $table->string('receiver_email', 191)->nullable();
         $table->text('shipping_address');
         $table->string('shipping_method', 50);
+        $table->string('payment_method', 50)->nullable();
         $table->decimal('total_amount', 15, 2)->default(0);
         $table->decimal('discount_amount', 15, 2)->default(0);
         $table->decimal('final_amount', 15, 2)->default(0);
@@ -144,6 +145,25 @@ test('cart items use catalog product price when product is not on sale', functio
         ->assertJsonPath('data.items.0.subtotal', '24000000.00');
 });
 
+test('zero sale price is ignored when calculating cart item price', function () {
+    seedCatalogProduct(4, 40, 8989998, 0, true);
+
+    $this->postJson('/api/carts', [
+        'user_id' => 1,
+        'items' => [
+            [
+                'product_variant_id' => 40,
+                'product_name' => 'Zero Sale Tablet',
+                'price' => 0,
+                'quantity' => 1,
+            ],
+        ],
+    ])
+        ->assertCreated()
+        ->assertJsonPath('data.items.0.price', '8989998.00')
+        ->assertJsonPath('data.items.0.subtotal', '8989998.00');
+});
+
 test('orders use sale price and recalculate totals from catalog pricing', function () {
     seedCatalogProduct(3, 30, 25000000, 22500000, true);
 
@@ -179,6 +199,29 @@ test('orders use sale price and recalculate totals from catalog pricing', functi
         ->assertJsonPath('data.total_amount', '45000000.00')
         ->assertJsonPath('data.discount_amount', '1000000.00')
         ->assertJsonPath('data.final_amount', '44000000.00');
+});
+
+test('vnpay order is rejected when calculated final amount is below minimum', function () {
+    $this->postJson('/api/orders', [
+        'user_id' => 1,
+        'receiver_name' => 'Nguyen Van A',
+        'receiver_phone' => '0900000000',
+        'shipping_address' => '123 Nguyen Trai',
+        'shipping_method' => 'standard',
+        'payment_method' => 'VNPAY',
+        'items' => [
+            [
+                'product_variant_id' => 999,
+                'product_name' => 'Broken Price Tablet',
+                'price' => 0,
+                'quantity' => 1,
+            ],
+        ],
+    ])
+        ->assertUnprocessable()
+        ->assertJsonPath('data.final_amount.0', 'Don hang thanh toan VNPAY phai co tong tien lon hon hoac bang 1000');
+
+    expect(DB::connection('bstore_order')->table('orders')->count())->toBe(0);
 });
 
 function seedCatalogProduct(int $productId, int $variantId, float $price, ?float $salePrice, bool $isSale): void

@@ -17,12 +17,14 @@ class Invoice extends Model
         'order_id',
         'invoice_code',
         'total_amount',
+        'issued_at',
     ];
 
     protected $casts = [
         'payment_id' => 'integer',
         'order_id' => 'integer',
         'total_amount' => 'decimal:2',
+        'issued_at' => 'datetime',
     ];
 
     public function payment()

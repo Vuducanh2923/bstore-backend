@@ -1,6 +1,8 @@
 <?php
 
 return [
+    'token_key' => env('AUTH_TOKEN_KEY', env('AUTH_SERVICE_APP_KEY', env('APP_KEY'))),
+
     'defaults' => [
         'guard' => env('AUTH_GUARD', 'web'),
         'passwords' => env('AUTH_PASSWORD_BROKER', 'users'),
