@@ -7,14 +7,41 @@ use Illuminate\Support\Facades\Schema;
 
 class Order extends Model
 {
+    public const STATUS_PENDING = 'pending';
+
+    public const STATUS_PROCESSING = 'processing';
+
+    public const STATUS_SHIPPING = 'shipping';
+
+    public const STATUS_DELIVERED = 'delivered';
+
+    public const STATUS_PENDING_CANCEL = 'pending_cancel';
+
+    public const STATUS_CANCELLED = 'cancelled';
+
+    public const STATUS_COMPLETED = 'completed';
+
+    public const STATUS_REFUNDED = 'refunded';
+
+    public const WORKFLOW_STATUSES = [
+        self::STATUS_PENDING,
+        self::STATUS_PROCESSING,
+        self::STATUS_SHIPPING,
+        self::STATUS_DELIVERED,
+    ];
+
     public const STATUS_LABELS = [
         'pending' => 'Đang chờ xử lý',
+        'processing' => 'Đang xử lý',
         'confirmed' => 'Đã xác nhận',
         'packing' => 'Đang đóng gói',
         'shipping' => 'Đang giao hàng',
         'delivered' => 'Đã giao hàng',
         'failed' => 'Giao hàng thất bại',
+        'pending_cancel' => 'Chờ duyệt hủy',
         'cancelled' => 'Đã hủy',
+        'completed' => 'Hoàn tất',
+        'refunded' => 'Đã hoàn tiền',
         'returned' => 'Đã trả hàng',
     ];
 
@@ -48,6 +75,10 @@ class Order extends Model
         'status',
         'payment_status',
         'paid_at',
+        'assigned_staff_id',
+        'assigned_staff_name',
+        'assigned_at',
+        'processing_note',
         'cancel_reason',
         'note',
         'created_at',
@@ -61,6 +92,8 @@ class Order extends Model
         'shipping_fee' => 'decimal:2',
         'final_amount' => 'decimal:2',
         'paid_at' => 'datetime',
+        'assigned_staff_id' => 'integer',
+        'assigned_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
@@ -98,6 +131,21 @@ class Order extends Model
     public function discounts()
     {
         return $this->hasMany(OrderDiscount::class);
+    }
+
+    public function histories()
+    {
+        return $this->hasMany(OrderHistory::class);
+    }
+
+    public function refundRequests()
+    {
+        return $this->hasMany(RefundRequest::class);
+    }
+
+    public function complaints()
+    {
+        return $this->hasMany(Complaint::class);
     }
 
     public function statusLabel(): ?string

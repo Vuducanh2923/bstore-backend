@@ -32,12 +32,23 @@ $catalogConnection = [
     'password' => env('CATALOG_DB_PASSWORD', env('DB_PASSWORD', '')),
 ];
 
+$authConnection = [
+    ...$mysqlConnection,
+    'url' => env('AUTH_DB_URL'),
+    'host' => env('AUTH_DB_HOST', env('DB_HOST', '127.0.0.1')),
+    'port' => env('AUTH_DB_PORT', env('DB_PORT', '3308')),
+    'database' => env('AUTH_DB_DATABASE', 'bstore_auth_db'),
+    'username' => env('AUTH_DB_USERNAME', env('DB_USERNAME', 'root')),
+    'password' => env('AUTH_DB_PASSWORD', env('DB_PASSWORD', '')),
+];
+
 return [
     'default' => env('DB_CONNECTION', 'bstore_order'),
 
     'connections' => [
         'bstore_order' => $mysqlConnection,
         'bstore_catalog' => $catalogConnection,
+        'bstore_auth' => $authConnection,
     ],
 
     'migrations' => [

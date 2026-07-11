@@ -54,6 +54,14 @@ test('admin order routes are forwarded to order service', function () {
             'success' => true,
             'data' => ['order_id' => 123, 'status' => 'confirmed'],
         ]),
+        'http://order.test/api/admin/orders/123/assign' => Http::response([
+            'success' => true,
+            'data' => ['order_id' => 123, 'status' => 'processing'],
+        ]),
+        'http://order.test/api/admin/orders/123/cancel/approve' => Http::response([
+            'success' => true,
+            'data' => ['order_id' => 123, 'status' => 'cancelled'],
+        ]),
     ]);
 
     $this->withHeader('Authorization', 'Bearer admin-token')
@@ -68,6 +76,14 @@ test('admin order routes are forwarded to order service', function () {
         ->patchJson('/api/admin/orders/123/status', ['status' => 'confirmed'])
         ->assertOk();
 
+    $this->withHeader('Authorization', 'Bearer admin-token')
+        ->putJson('/api/admin/orders/123/assign')
+        ->assertOk();
+
+    $this->withHeader('Authorization', 'Bearer admin-token')
+        ->putJson('/api/admin/orders/123/cancel/approve')
+        ->assertOk();
+
     Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/admin/orders'
         && $request->method() === 'GET'
         && $request->hasHeader('authorization', 'Bearer admin-token'));
@@ -78,6 +94,14 @@ test('admin order routes are forwarded to order service', function () {
 
     Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/admin/orders/123/status'
         && $request->method() === 'PATCH'
+        && $request->hasHeader('authorization', 'Bearer admin-token'));
+
+    Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/admin/orders/123/assign'
+        && $request->method() === 'PUT'
+        && $request->hasHeader('authorization', 'Bearer admin-token'));
+
+    Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/admin/orders/123/cancel/approve'
+        && $request->method() === 'PUT'
         && $request->hasHeader('authorization', 'Bearer admin-token'));
 });
 
@@ -116,14 +140,72 @@ test('customer order routes are forwarded to order service', function () {
             'success' => true,
             'data' => [],
         ]),
+        'http://order.test/api/customer/orders/123/cancel' => Http::response([
+            'success' => true,
+            'data' => ['status' => 'pending_cancel'],
+        ]),
     ]);
 
     $this->withHeader('Authorization', 'Bearer customer-token')
         ->getJson('/api/customer/orders')
         ->assertOk();
 
+    $this->withHeader('Authorization', 'Bearer customer-token')
+        ->postJson('/api/customer/orders/123/cancel', ['reason' => 'doi y'])
+        ->assertOk();
+
     Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/customer/orders'
         && $request->hasHeader('authorization', 'Bearer customer-token'));
+
+    Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/customer/orders/123/cancel'
+        && $request->method() === 'POST'
+        && $request->hasHeader('authorization', 'Bearer customer-token'));
+});
+
+test('refund and complaint routes are forwarded to order service', function () {
+    Http::fake([
+        'http://order.test/api/refunds' => Http::response([
+            'success' => true,
+            'data' => [],
+        ]),
+        'http://order.test/api/refunds/5/approve' => Http::response([
+            'success' => true,
+            'data' => ['id' => 5, 'status' => 'approved'],
+        ]),
+        'http://order.test/api/complaints' => Http::response([
+            'success' => true,
+            'data' => [],
+        ]),
+        'http://order.test/api/complaints/7/resolve' => Http::response([
+            'success' => true,
+            'data' => ['id' => 7, 'status' => 'resolved'],
+        ]),
+    ]);
+
+    $this->withHeader('Authorization', 'Bearer token')
+        ->getJson('/api/refunds')
+        ->assertOk();
+
+    $this->withHeader('Authorization', 'Bearer token')
+        ->putJson('/api/refunds/5/approve')
+        ->assertOk();
+
+    $this->withHeader('Authorization', 'Bearer token')
+        ->getJson('/api/complaints')
+        ->assertOk();
+
+    $this->withHeader('Authorization', 'Bearer token')
+        ->putJson('/api/complaints/7/resolve')
+        ->assertOk();
+
+    Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/refunds'
+        && $request->method() === 'GET');
+    Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/refunds/5/approve'
+        && $request->method() === 'PUT');
+    Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/complaints'
+        && $request->method() === 'GET');
+    Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/complaints/7/resolve'
+        && $request->method() === 'PUT');
 });
 
 test('internal routes are forwarded to the owning service', function () {

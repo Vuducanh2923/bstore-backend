@@ -213,11 +213,11 @@ test('admin can update order status', function () {
         ])
         ->assertOk()
         ->assertJsonPath('data.order_id', $orderId)
-        ->assertJsonPath('data.status', 'confirmed');
+        ->assertJsonPath('data.status', 'processing');
 
     $this->assertDatabaseHas('orders', [
         'id' => $orderId,
-        'status' => 'confirmed',
+        'status' => 'processing',
     ], 'bstore_order');
 });
 
@@ -245,5 +245,5 @@ test('staff can access and update admin orders', function () {
             'status' => 'confirmed',
         ])
         ->assertOk()
-        ->assertJsonPath('data.status', 'confirmed');
+        ->assertJsonPath('data.status', 'processing');
 });

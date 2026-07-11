@@ -87,10 +87,17 @@ class OrderController extends Controller
     public function updateAdminOrderStatus(Request $request, int|string $id): JsonResponse
     {
         $data = $request->validate([
-            'status' => ['required', 'string', Rule::in(array_keys(Order::STATUS_LABELS))],
+            'status' => ['required', 'string', 'max:30'],
+            'note' => ['nullable', 'string'],
+            'processing_note' => ['nullable', 'string'],
         ]);
 
-        $order = $this->orderService->updateStatus((int) $id, $data['status']);
+        $order = $this->orderService->updateStatus(
+            (int) $id,
+            $data['status'],
+            $this->authenticatedActor($request),
+            $data['processing_note'] ?? $data['note'] ?? null,
+        );
 
         if (! $order) {
             return response()->json([
@@ -103,6 +110,34 @@ class OrderController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Cap nhat trang thai don hang thanh cong',
+            'data' => $this->orderService->serializeAdminOrder($order),
+        ]);
+    }
+
+    public function assignToStaff(Request $request, int|string $id): JsonResponse
+    {
+        $data = $request->validate([
+            'note' => ['nullable', 'string'],
+            'processing_note' => ['nullable', 'string'],
+        ]);
+
+        $order = $this->orderService->assignToStaff(
+            (int) $id,
+            $this->authenticatedActor($request),
+            $data['processing_note'] ?? $data['note'] ?? null,
+        );
+
+        if (! $order) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Khong tim thay don hang',
+                'data' => null,
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Nhan xu ly don hang thanh cong',
             'data' => $this->orderService->serializeAdminOrder($order),
         ]);
     }
@@ -141,7 +176,7 @@ class OrderController extends Controller
     {
         $data = $request->validate([
             'payment_status' => ['required', 'string', Rule::in(array_keys(Order::PAYMENT_STATUS_LABELS))],
-            'status' => ['nullable', 'string', Rule::in(array_keys(Order::STATUS_LABELS))],
+            'status' => ['nullable', 'string', 'max:30'],
             'payment_method' => ['nullable', 'string', 'max:50'],
             'paid_at' => ['nullable', 'date'],
         ]);
@@ -231,8 +266,96 @@ class OrderController extends Controller
         ], 201);
     }
 
+    public function requestCancel(Request $request, int|string $id): JsonResponse
+    {
+        $data = $request->validate([
+            'reason' => ['required', 'string'],
+        ]);
+
+        $order = $this->orderService->requestCancel(
+            $this->authenticatedUserId($request),
+            (int) $id,
+            $data['reason'],
+        );
+
+        if (! $order) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Khong tim thay don hang',
+                'data' => null,
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Gui yeu cau huy don thanh cong',
+            'data' => $this->orderService->serializeOrder($order),
+        ]);
+    }
+
+    public function approveCancel(Request $request, int|string $id): JsonResponse
+    {
+        $data = $request->validate([
+            'note' => ['nullable', 'string'],
+            'admin_note' => ['nullable', 'string'],
+        ]);
+
+        $order = $this->orderService->approveCancel(
+            (int) $id,
+            $this->authenticatedActor($request),
+            $data['admin_note'] ?? $data['note'] ?? null,
+        );
+
+        if (! $order) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Khong tim thay don hang',
+                'data' => null,
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Duyet huy don thanh cong',
+            'data' => $this->orderService->serializeAdminOrder($order),
+        ]);
+    }
+
+    public function rejectCancel(Request $request, int|string $id): JsonResponse
+    {
+        $data = $request->validate([
+            'note' => ['nullable', 'string'],
+            'admin_note' => ['nullable', 'string'],
+        ]);
+
+        $order = $this->orderService->rejectCancel(
+            (int) $id,
+            $this->authenticatedActor($request),
+            $data['admin_note'] ?? $data['note'] ?? null,
+        );
+
+        if (! $order) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Khong tim thay don hang',
+                'data' => null,
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Tu choi huy don thanh cong',
+            'data' => $this->orderService->serializeAdminOrder($order),
+        ]);
+    }
+
     private function authenticatedUserId(Request $request): int
     {
         return (int) data_get($request->attributes->get('auth_user'), 'id');
+    }
+
+    private function authenticatedActor(Request $request): array
+    {
+        return (array) $request->attributes->get('auth_user', []);
     }
 }

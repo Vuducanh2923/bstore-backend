@@ -3,9 +3,11 @@
 namespace App\Services;
 
 use App\Mail\OrderNotificationMail;
+use App\Models\Notification;
 use App\Models\Order;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 class OrderNotificationService
@@ -14,12 +16,58 @@ class OrderNotificationService
 
     public function sendCreated(Order $order): void
     {
+        $this->create(
+            userId: (int) $order->user_id,
+            orderId: (int) $order->id,
+            type: 'order_created',
+            message: "Don hang {$order->order_code} da duoc tao thanh cong.",
+        );
+
         $this->send($order, 'created');
     }
 
     public function sendStatusUpdated(Order $order): void
     {
+        $this->create(
+            userId: (int) $order->user_id,
+            orderId: (int) $order->id,
+            type: 'order_status_updated',
+            message: $this->statusMessage($order),
+            data: ['status' => $order->status],
+        );
+
         $this->send($order, 'status_updated');
+    }
+
+    public function create(
+        ?int $userId,
+        ?int $orderId,
+        string $type,
+        string $message,
+        ?string $title = null,
+        array $data = [],
+    ): void {
+        if (! $this->notificationsTableExists()) {
+            return;
+        }
+
+        try {
+            Notification::create([
+                'user_id' => $userId,
+                'order_id' => $orderId,
+                'type' => $type,
+                'title' => $title,
+                'message' => $message,
+                'data' => $data ?: null,
+            ]);
+        } catch (Throwable $exception) {
+            Log::warning('Could not create order notification.', [
+                'user_id' => $userId,
+                'order_id' => $orderId,
+                'type' => $type,
+                'error' => $exception->getMessage(),
+            ]);
+        }
     }
 
     private function send(Order $order, string $eventType): void
@@ -76,5 +124,26 @@ class OrderNotificationService
                 'subtotal' => $item->subtotal,
             ])->values()->all(),
         ];
+    }
+
+    private function statusMessage(Order $order): string
+    {
+        return match ($order->status) {
+            Order::STATUS_PROCESSING => "Don hang da duoc nhan vien {$order->assigned_staff_name} tiep nhan.",
+            Order::STATUS_SHIPPING => 'Don hang dang duoc van chuyen.',
+            Order::STATUS_DELIVERED => 'Don hang da giao thanh cong.',
+            Order::STATUS_PENDING_CANCEL => 'Yeu cau huy don dang cho xu ly.',
+            Order::STATUS_CANCELLED => 'Yeu cau huy don da duoc chap nhan.',
+            default => "Don hang da duoc cap nhat sang trang thai {$order->status}.",
+        };
+    }
+
+    private function notificationsTableExists(): bool
+    {
+        try {
+            return Schema::connection('bstore_order')->hasTable('notifications');
+        } catch (Throwable) {
+            return false;
+        }
     }
 }

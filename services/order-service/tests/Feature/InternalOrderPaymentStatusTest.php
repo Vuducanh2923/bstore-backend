@@ -28,7 +28,7 @@ beforeEach(function () {
     });
 });
 
-test('internal payment status endpoint marks an order paid and confirmed', function () {
+test('internal payment status endpoint marks an order paid without assigning staff', function () {
     $orderId = DB::connection('bstore_order')->table('orders')->insertGetId([
         'user_id' => 10,
         'status' => 'pending',
@@ -43,13 +43,13 @@ test('internal payment status endpoint marks an order paid and confirmed', funct
         ->assertOk()
         ->assertJsonPath('success', true)
         ->assertJsonPath('data.order_id', $orderId)
-        ->assertJsonPath('data.status', 'confirmed')
+        ->assertJsonPath('data.status', 'pending')
         ->assertJsonPath('data.payment_status', 'paid')
         ->assertJsonPath('data.payment_method', 'vnpay');
 
     $order = DB::connection('bstore_order')->table('orders')->where('id', $orderId)->first();
 
-    expect($order->status)->toBe('confirmed')
+    expect($order->status)->toBe('pending')
         ->and($order->payment_status)->toBe('paid')
         ->and($order->payment_method)->toBe('vnpay')
         ->and($order->paid_at)->not->toBeNull();

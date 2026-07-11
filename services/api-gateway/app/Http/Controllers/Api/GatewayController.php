@@ -22,7 +22,7 @@ class GatewayController extends Controller
     ];
 
     private const ORDER_ADMIN_PATH_PATTERNS = [
-        '#^admin/orders(?:/[0-9]+)?(?:/status)?$#',
+        '#^admin/orders(?:/[0-9]+)?(?:/(?:assign|status|cancel/(?:approve|reject)))?$#',
     ];
 
     private const INTERNAL_ORDER_PATH_PATTERNS = [
@@ -65,9 +65,16 @@ class GatewayController extends Controller
         'discounts' => 'order',
         'order-discounts' => 'order',
         'order_discounts' => 'order',
+        'order-histories' => 'order',
+        'order_histories' => 'order',
         'order-items' => 'order',
         'order_items' => 'order',
         'orders' => 'order',
+        'complaints' => 'order',
+        'notifications' => 'order',
+        'refunds' => 'order',
+        'refund-requests' => 'order',
+        'refund_requests' => 'order',
         'warranty-requests' => 'order',
         'warranty_requests' => 'order',
 

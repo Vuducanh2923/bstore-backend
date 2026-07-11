@@ -5,10 +5,14 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Cart;
 use App\Models\CartItem;
+use App\Models\Complaint;
 use App\Models\Discount;
+use App\Models\Notification;
 use App\Models\Order;
 use App\Models\OrderDiscount;
+use App\Models\OrderHistory;
 use App\Models\OrderItem;
+use App\Models\RefundRequest;
 use App\Models\WarrantyRequest;
 use App\Services\OrderNotificationService;
 use Illuminate\Database\Eloquent\Model;
@@ -24,6 +28,13 @@ class ResourceController extends Controller
         'cart-items' => ['model' => CartItem::class, 'relations' => ['cart']],
         'cart_items' => ['model' => CartItem::class, 'relations' => ['cart']],
         'orders' => ['model' => Order::class, 'relations' => ['items', 'discounts']],
+        'refunds' => ['model' => RefundRequest::class, 'relations' => ['order']],
+        'refund-requests' => ['model' => RefundRequest::class, 'relations' => ['order']],
+        'refund_requests' => ['model' => RefundRequest::class, 'relations' => ['order']],
+        'complaints' => ['model' => Complaint::class, 'relations' => ['order']],
+        'order-histories' => ['model' => OrderHistory::class, 'relations' => ['order']],
+        'order_histories' => ['model' => OrderHistory::class, 'relations' => ['order']],
+        'notifications' => ['model' => Notification::class, 'relations' => ['order']],
         'order-items' => ['model' => OrderItem::class, 'relations' => ['order']],
         'order_items' => ['model' => OrderItem::class, 'relations' => ['order']],
         'discounts' => ['model' => Discount::class],
@@ -68,6 +79,14 @@ class ResourceController extends Controller
             ], 404);
         }
 
+        if ($record instanceof Order) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Vui long xem don hang qua customer/admin API',
+                'data' => null,
+            ], 403);
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Lay du lieu thanh cong',
@@ -100,6 +119,14 @@ class ResourceController extends Controller
             ], 404);
         }
 
+        if ($record instanceof Order) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Vui long cap nhat don hang qua workflow API',
+                'data' => null,
+            ], 403);
+        }
+
         $record->fill($this->payload($request, $record, $resource));
         $record->save();
         $freshRecord = $this->fresh($record, $relations);
@@ -125,6 +152,14 @@ class ResourceController extends Controller
                 'success' => false,
                 'message' => 'Khong tim thay du lieu',
             ], 404);
+        }
+
+        if ($record instanceof Order) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Vui long xu ly don hang qua workflow API',
+                'data' => null,
+            ], 403);
         }
 
         $record->delete();

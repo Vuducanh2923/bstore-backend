@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\AdminToken;
 use App\Http\Middleware\CustomerToken;
+use App\Http\Middleware\UserToken;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -23,6 +24,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'admin.token' => AdminToken::class,
             'customer.token' => CustomerToken::class,
+            'user.token' => UserToken::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
