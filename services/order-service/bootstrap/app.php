@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\AdminToken;
 use App\Http\Middleware\CustomerToken;
+use App\Http\Middleware\InternalService;
 use App\Http\Middleware\UserToken;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
@@ -24,6 +25,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'admin.token' => AdminToken::class,
             'customer.token' => CustomerToken::class,
+            'internal.service' => InternalService::class,
             'user.token' => UserToken::class,
         ]);
     })
@@ -33,10 +35,13 @@ return Application::configure(basePath: dirname(__DIR__))
                 return null;
             }
 
+            $errors = $exception->errors();
+            $firstError = collect($errors)->flatten()->first();
+
             return response()->json([
                 'success' => false,
-                'message' => 'Du lieu khong hop le',
-                'data' => $exception->errors(),
+                'message' => is_string($firstError) ? $firstError : 'Du lieu khong hop le',
+                'data' => $errors,
             ], 422);
         });
 

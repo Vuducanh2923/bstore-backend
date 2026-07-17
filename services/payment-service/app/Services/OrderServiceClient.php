@@ -6,217 +6,111 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
 
 class OrderServiceClient
 {
-    public function markPaymentPaid(int $orderId, ?string $authorization = null): array
+    public function paymentContext(int $orderId, int $customerId): array
     {
-        $baseUrl = rtrim((string) config('services.order.url'), '/');
-
-        if ($baseUrl === '') {
-            return [
-                'updated' => false,
-                'status' => null,
-                'message' => 'ORDER_SERVICE_URL chua duoc cau hinh',
-            ];
+        try {
+            $response = $this->request()->get($this->url("/api/internal/orders/{$orderId}/payment-context"), [
+                'customer_id' => $customerId,
+            ]);
+        } catch (ConnectionException $exception) {
+            throw new RuntimeException('Khong ket noi duoc Order Service', previous: $exception);
         }
 
-        $url = "{$baseUrl}/api/internal/orders/{$orderId}/payment-status";
-        $headers = [];
-
-        if ($authorization) {
-            $headers['Authorization'] = $authorization;
+        if (! $response->successful() || ! is_array($response->json('data'))) {
+            throw new RuntimeException((string) ($response->json('message') ?: 'Order Service tu choi ngu canh thanh toan'));
         }
 
-        $payload = [
+        return $response->json('data');
+    }
+
+    public function markPaymentPaid(int $orderId): array
+    {
+        return $this->updatePaymentStatus($orderId, [
             'payment_status' => 'paid',
-            'status' => 'confirmed',
             'payment_method' => 'vnpay',
             'paid_at' => now()->toDateTimeString(),
-        ];
-
-        Log::info('payment.order_payment_paid.request', [
-            'order_id' => $orderId,
-            'order_service_url' => $baseUrl,
-            'url' => $url,
-            'payload' => $payload,
-            'authorization_present' => $authorization !== null,
         ]);
+    }
 
-        try {
-            $response = $this->request()
-                ->withHeaders($headers)
-                ->patch($url, $payload);
-        } catch (ConnectionException $exception) {
-            Log::error('payment.order_payment_paid.connection_failed', [
-                'order_id' => $orderId,
-                'order_service_url' => $baseUrl,
-                'url' => $url,
-                'payload' => $payload,
-                'message' => $exception->getMessage(),
-            ]);
-
-            return [
-                'updated' => false,
-                'status' => null,
-                'message' => 'Khong ket noi duoc Order Service de cap nhat payment_status=paid',
-            ];
-        }
-
-        $body = $response->json();
-
-        Log::info('payment.order_payment_paid.response', [
-            'order_id' => $orderId,
-            'order_service_url' => $baseUrl,
-            'url' => $url,
-            'status' => $response->status(),
-            'response_success' => $response->successful(),
+    public function markPaymentFailed(int $orderId, string $reason): array
+    {
+        return $this->updatePaymentStatus($orderId, [
+            'payment_status' => 'failed',
+            'reason' => $reason,
         ]);
-
-        return [
-            'updated' => $response->successful(),
-            'status' => $response->status(),
-            'message' => $response->successful()
-                ? 'Da cap nhat payment_status=paid cho don hang'
-                : 'Order Service tra ve loi khi cap nhat payment_status=paid',
-            'response' => $body,
-        ];
     }
 
     public function clearCartForPaidOrder(int $orderId): array
     {
-        $baseUrl = rtrim((string) config('services.order.url'), '/');
-
-        if ($baseUrl === '') {
-            return [
-                'cleared' => false,
-                'status' => null,
-                'message' => 'ORDER_SERVICE_URL chua duoc cau hinh',
-            ];
-        }
-
-        $url = "{$baseUrl}/api/internal/orders/{$orderId}/cart/clear";
-        $payload = [
-            'source' => 'payment-service',
-            'reason' => 'vnpay_paid',
-        ];
-
-        Log::info('payment.order_cart_clear.request', [
-            'order_id' => $orderId,
-            'url' => $url,
-            'payload' => $payload,
-        ]);
-
         try {
-            $response = $this->request()->post($url, $payload);
-        } catch (ConnectionException $exception) {
-            Log::error('payment.order_cart_clear.connection_failed', [
-                'order_id' => $orderId,
-                'url' => $url,
-                'payload' => $payload,
-                'message' => $exception->getMessage(),
+            $response = $this->request()->post($this->url("/api/internal/orders/{$orderId}/cart/clear"), [
+                'source' => 'payment-service',
+                'reason' => 'vnpay_paid',
             ]);
+        } catch (ConnectionException $exception) {
+            Log::error('payment.order_cart_clear.connection_failed', ['order_id' => $orderId, 'message' => $exception->getMessage()]);
 
-            return [
-                'cleared' => false,
-                'status' => null,
-                'message' => 'Khong ket noi duoc Order Service de xoa gio hang',
-            ];
+            return ['cleared' => false, 'status' => null, 'message' => 'Khong ket noi duoc Order Service'];
         }
-
-        $body = $response->json();
-
-        Log::info('payment.order_cart_clear.response', [
-            'order_id' => $orderId,
-            'url' => $url,
-            'status' => $response->status(),
-            'response_success' => $response->successful(),
-        ]);
 
         return [
             'cleared' => $response->successful(),
             'status' => $response->status(),
-            'message' => $response->successful()
-                ? 'Da xoa gio hang sau khi thanh toan thanh cong'
-                : 'Order Service tra ve loi khi xoa gio hang',
-            'response' => $body,
+            'response' => $response->json(),
         ];
     }
 
-    public function markPaymentFailed(int $orderId, string $reason, ?string $authorization = null): array
+    private function updatePaymentStatus(int $orderId, array $payload): array
     {
-        $baseUrl = rtrim((string) config('services.order.url'), '/');
-
-        if ($baseUrl === '') {
-            return [
-                'updated' => false,
-                'status' => null,
-                'message' => 'ORDER_SERVICE_URL chua duoc cau hinh',
-            ];
-        }
-
-        $url = "{$baseUrl}/api/orders/{$orderId}";
-        $headers = [];
-
-        if ($authorization) {
-            $headers['Authorization'] = $authorization;
-        }
-
-        $payload = [
-            'payment_status' => 'failed',
-            'cancel_reason' => $reason,
-        ];
-
-        Log::info('payment.order_payment_failed.request', [
-            'order_id' => $orderId,
-            'url' => $url,
-            'payload' => $payload,
-            'authorization_present' => $authorization !== null,
-        ]);
-
         try {
-            $response = $this->request()
-                ->withHeaders($headers)
-                ->patch($url, $payload);
+            $response = $this->request()->patch(
+                $this->url("/api/internal/orders/{$orderId}/payment-status"),
+                $payload,
+            );
         } catch (ConnectionException $exception) {
-            Log::error('payment.order_payment_failed.connection_failed', [
+            Log::error('payment.order_status.connection_failed', [
                 'order_id' => $orderId,
-                'url' => $url,
                 'payload' => $payload,
                 'message' => $exception->getMessage(),
             ]);
 
-            return [
-                'updated' => false,
-                'status' => null,
-                'message' => 'Khong ket noi duoc Order Service de cap nhat payment_status',
-            ];
+            return ['updated' => false, 'status' => null, 'message' => 'Khong ket noi duoc Order Service'];
         }
-
-        $body = $response->json();
-
-        Log::info('payment.order_payment_failed.response', [
-            'order_id' => $orderId,
-            'url' => $url,
-            'status' => $response->status(),
-            'response_success' => $response->successful(),
-        ]);
 
         return [
             'updated' => $response->successful(),
             'status' => $response->status(),
-            'message' => $response->successful()
-                ? 'Da cap nhat payment_status=failed cho don hang'
-                : 'Order Service tra ve loi khi cap nhat payment_status',
-            'response' => $body,
+            'response' => $response->json(),
         ];
     }
 
     private function request(): PendingRequest
     {
+        $token = trim((string) config('services.internal.token'));
+
+        if ($token === '') {
+            throw new RuntimeException('INTERNAL_SERVICE_TOKEN chua duoc cau hinh');
+        }
+
         return Http::acceptJson()
+            ->withHeaders(['X-Internal-Service-Token' => $token])
             ->connectTimeout((int) config('services.connect_timeout', 2))
             ->timeout((int) config('services.timeout', 5))
             ->retry(2, 100, null, false);
+    }
+
+    private function url(string $path): string
+    {
+        $baseUrl = rtrim((string) config('services.order.url'), '/');
+
+        if ($baseUrl === '') {
+            throw new RuntimeException('ORDER_SERVICE_URL chua duoc cau hinh');
+        }
+
+        return $baseUrl.$path;
     }
 }

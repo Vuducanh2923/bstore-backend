@@ -135,7 +135,7 @@ test('customer can view only own order detail and internal endpoint returns orde
         ->getJson("/api/customer/orders/{$otherOrderId}")
         ->assertNotFound();
 
-    $this->getJson('/api/internal/customers/10/orders')
+    $this->withHeaders(internalServiceHeaders())->getJson('/api/internal/customers/10/orders')
         ->assertOk()
         ->assertJsonPath('data.0.order_code', 'ORD-OWN')
         ->assertJsonCount(1, 'data.0.items');

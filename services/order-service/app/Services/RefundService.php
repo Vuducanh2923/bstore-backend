@@ -17,6 +17,7 @@ class RefundService
 
     public function __construct(
         private readonly UserDirectoryService $users,
+        private readonly PaymentRefundService $payments,
         private readonly OrderHistoryService $histories,
         private readonly OrderNotificationService $notifications,
     ) {}
@@ -74,11 +75,31 @@ class RefundService
                 ]);
             }
 
+            if (strtolower((string) $order->payment_status) !== 'paid' || strtolower((string) $order->status) !== Order::STATUS_DELIVERED) {
+                throw ValidationException::withMessages([
+                    'order_id' => ['Chi don hang da giao va da thanh toan moi duoc yeu cau hoan tien'],
+                ]);
+            }
+
+            if (RefundRequest::query()->where('order_id', $order->id)->exists()) {
+                throw ValidationException::withMessages([
+                    'order_id' => ['Don hang da co yeu cau hoan tien'],
+                ]);
+            }
+
+            $amount = (float) ($data['amount'] ?? $order->final_amount ?? 0);
+
+            if ($amount <= 0 || $amount > (float) $order->final_amount) {
+                throw ValidationException::withMessages([
+                    'amount' => ['So tien hoan phai lon hon 0 va khong vuot qua tong tien don hang'],
+                ]);
+            }
+
             $refund = RefundRequest::create([
                 'order_id' => $order->id,
                 'customer_id' => $actor['id'],
                 'reason' => $data['reason'],
-                'amount' => $data['amount'] ?? ($order->final_amount ?? 0),
+                'amount' => $amount,
                 'status' => RefundRequest::STATUS_PENDING,
             ]);
 
@@ -115,75 +136,105 @@ class RefundService
 
     public function markRefunding(int $refundId, array $actor, ?string $note = null): ?RefundRequest
     {
-        return $this->transition($refundId, $actor, RefundRequest::STATUS_REFUNDING, $note);
-    }
-
-    public function complete(int $refundId, array $actor, array $data): ?RefundRequest
-    {
-        $refund = DB::connection('bstore_order')->transaction(function () use ($refundId, $actor, $data) {
+        $actor = $this->users->actor($actor);
+        $refund = DB::connection('bstore_order')->transaction(function () use ($refundId, $actor, $note) {
             $refund = RefundRequest::with('order')->lockForUpdate()->find($refundId);
 
             if (! $refund) {
                 return null;
             }
 
-            $actor = $this->users->actor($actor);
             $this->ensureCanHandle($refund, $actor);
+
+            if ($refund->status === RefundRequest::STATUS_REFUNDED) {
+                return $refund;
+            }
 
             if (! in_array($refund->status, [RefundRequest::STATUS_APPROVED, RefundRequest::STATUS_REFUNDING], true)) {
                 throw ValidationException::withMessages([
-                    'status' => ['Chi yeu cau Approved hoac Refunding moi duoc hoan tat'],
+                    'status' => ['Chi yeu cau Approved hoac Refunding moi duoc gui toi nha cung cap'],
                 ]);
             }
 
             if ($refund->status === RefundRequest::STATUS_APPROVED) {
+                $refund->status = RefundRequest::STATUS_REFUNDING;
+                $refund->admin_note = $note ?? $refund->admin_note;
+                $refund->save();
+
                 $this->histories->record(
                     (int) $refund->order_id,
                     'refund_refunding',
                     (string) $refund->order?->status,
                     (string) $refund->order?->status,
                     $actor,
-                    $data['admin_note'] ?? null,
-                );
-            }
-
-            $refund->status = RefundRequest::STATUS_REFUNDED;
-            $refund->approved_by = $refund->approved_by ?: $actor['id'];
-            $refund->approved_at = $refund->approved_at ?: now();
-            $refund->refund_method = $data['refund_method'] ?? $refund->refund_method;
-            $refund->refund_transaction = $data['refund_transaction'] ?? $refund->refund_transaction;
-            $refund->admin_note = $data['admin_note'] ?? $refund->admin_note;
-            $refund->save();
-
-            $order = $refund->order;
-
-            if ($order) {
-                $oldOrderStatus = (string) $order->status;
-                $order->payment_status = 'refunded';
-                $order->status = Order::STATUS_REFUNDED;
-                $order->save();
-
-                $this->histories->record(
-                    (int) $order->id,
-                    'refund_refunded',
-                    $oldOrderStatus,
-                    Order::STATUS_REFUNDED,
-                    $actor,
-                    $data['admin_note'] ?? null,
+                    $note,
                 );
             }
 
             return $refund->fresh('order') ?? $refund;
         });
 
-        if ($refund?->order) {
-            $this->notifications->create(
-                userId: (int) $refund->customer_id,
-                orderId: (int) $refund->order_id,
-                type: 'refund_refunded',
-                message: 'Yeu cau hoan tien da hoan tat.',
-                data: ['refund_id' => $refund->id],
-            );
+        if (! $refund || $refund->status === RefundRequest::STATUS_REFUNDED) {
+            return $refund;
+        }
+
+        if ($this->isCashOnDelivery($refund->order)) {
+            $this->notify($refund);
+
+            return $refund;
+        }
+
+        $providerStatus = $this->payments->refund(
+            (int) $refund->order_id,
+            (int) $refund->id,
+            (float) $refund->amount,
+            (string) $refund->reason,
+            (int) $actor['id'],
+        );
+
+        if ($providerStatus === 'refunded') {
+            $refund = $this->finalize($refundId, $actor, [
+                'refund_method' => (string) $refund->order?->payment_method,
+                'admin_note' => $note,
+            ]);
+        }
+
+        if ($refund) {
+            $this->notify($refund);
+        }
+
+        return $refund;
+    }
+
+    public function complete(int $refundId, array $actor, array $data): ?RefundRequest
+    {
+        $actor = $this->users->actor($actor);
+        $refund = RefundRequest::with('order')->find($refundId);
+
+        if (! $refund) {
+            return null;
+        }
+
+        $this->ensureCanHandle($refund, $actor);
+
+        if (! $this->isCashOnDelivery($refund->order)) {
+            throw ValidationException::withMessages([
+                'status' => ['Hoan tien online chi hoan tat theo ket qua tu Payment Service'],
+            ]);
+        }
+
+        $method = strtolower(trim((string) ($data['refund_method'] ?? '')));
+
+        if (! in_array($method, ['cod', 'cash', 'manual', 'bank_transfer'], true)) {
+            throw ValidationException::withMessages([
+                'refund_method' => ['Phuong thuc hoan tien COD khong hop le'],
+            ]);
+        }
+
+        $refund = $this->finalize($refundId, $actor, $data);
+
+        if ($refund) {
+            $this->notify($refund);
         }
 
         return $refund;
@@ -258,6 +309,88 @@ class RefundService
         }
 
         return $refund;
+    }
+
+    private function finalize(int $refundId, array $actor, array $data): ?RefundRequest
+    {
+        return DB::connection('bstore_order')->transaction(function () use ($refundId, $actor, $data) {
+            $refund = RefundRequest::with('order')->lockForUpdate()->find($refundId);
+
+            if (! $refund) {
+                return null;
+            }
+
+            $this->ensureCanHandle($refund, $actor);
+
+            if ($refund->status === RefundRequest::STATUS_REFUNDED) {
+                return $refund;
+            }
+
+            if (! in_array($refund->status, [RefundRequest::STATUS_APPROVED, RefundRequest::STATUS_REFUNDING], true)) {
+                throw ValidationException::withMessages([
+                    'status' => ['Chi yeu cau Approved hoac Refunding moi duoc hoan tat'],
+                ]);
+            }
+
+            if ($refund->status === RefundRequest::STATUS_APPROVED) {
+                $this->histories->record(
+                    (int) $refund->order_id,
+                    'refund_refunding',
+                    (string) $refund->order?->status,
+                    (string) $refund->order?->status,
+                    $actor,
+                    $data['admin_note'] ?? null,
+                );
+            }
+
+            $refund->status = RefundRequest::STATUS_REFUNDED;
+            $refund->approved_by = $refund->approved_by ?: $actor['id'];
+            $refund->approved_at = $refund->approved_at ?: now();
+            $refund->refund_method = $data['refund_method'] ?? $refund->refund_method;
+            $refund->refund_transaction = $data['refund_transaction'] ?? $refund->refund_transaction;
+            $refund->admin_note = $data['admin_note'] ?? $refund->admin_note;
+            $refund->save();
+
+            $order = $refund->order;
+
+            if ($order) {
+                $oldOrderStatus = (string) $order->status;
+                $order->payment_status = 'refunded';
+                $order->status = Order::STATUS_REFUNDED;
+                $order->save();
+
+                $this->histories->record(
+                    (int) $order->id,
+                    'refund_refunded',
+                    $oldOrderStatus,
+                    Order::STATUS_REFUNDED,
+                    $actor,
+                    $data['admin_note'] ?? null,
+                );
+            }
+
+            return $refund->fresh('order') ?? $refund;
+        });
+    }
+
+    private function notify(RefundRequest $refund): void
+    {
+        $this->notifications->create(
+            userId: (int) $refund->customer_id,
+            orderId: (int) $refund->order_id,
+            type: 'refund_'.$refund->status,
+            message: $this->messageForStatus($refund->status),
+            data: ['refund_id' => $refund->id],
+        );
+    }
+
+    private function isCashOnDelivery(?Order $order): bool
+    {
+        return $order !== null && in_array(strtolower((string) $order->payment_method), [
+            'cod',
+            'cash',
+            'cash_on_delivery',
+        ], true);
     }
 
     private function ensureRefundTransition(string $currentStatus, string $nextStatus): void

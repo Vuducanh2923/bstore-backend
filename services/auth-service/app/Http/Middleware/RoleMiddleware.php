@@ -27,6 +27,14 @@ abstract class RoleMiddleware
             ], 401);
         }
 
+        if (! $user->isActive()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tai khoan da bi vo hieu hoa',
+                'data' => null,
+            ], 403);
+        }
+
         $request->setUserResolver(fn () => $user);
         $user->loadMissing('role');
 

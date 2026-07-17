@@ -19,7 +19,6 @@ return [
         ['name' => 'Documentation', 'description' => 'OpenAPI document endpoint.'],
         ['name' => 'Carts', 'description' => 'Cart-specific endpoints.'],
         ['name' => 'Orders', 'description' => 'Order-specific endpoints.'],
-        ['name' => 'Resources', 'description' => 'Generic CRUD endpoints for supported order resources.'],
     ],
     'paths' => [
         '/docs/openapi.json' => [
@@ -99,77 +98,6 @@ return [
                 ],
             ],
         ],
-        '/{resource}' => [
-            'parameters' => [
-                ['$ref' => '#/components/parameters/OrderResource'],
-            ],
-            'get' => [
-                'tags' => ['Resources'],
-                'summary' => 'List records for a supported resource',
-                'operationId' => 'listOrderResource',
-                'responses' => [
-                    '200' => ['$ref' => '#/components/responses/ResourceCollection'],
-                    '404' => ['$ref' => '#/components/responses/UnsupportedResource'],
-                ],
-            ],
-            'post' => [
-                'tags' => ['Resources'],
-                'summary' => 'Create a record for a supported resource',
-                'operationId' => 'createOrderResource',
-                'requestBody' => ['$ref' => '#/components/requestBodies/GenericResource'],
-                'responses' => [
-                    '201' => ['$ref' => '#/components/responses/ResourceRecord'],
-                    '404' => ['$ref' => '#/components/responses/UnsupportedResource'],
-                    '422' => ['$ref' => '#/components/responses/ValidationError'],
-                ],
-            ],
-        ],
-        '/{resource}/{id}' => [
-            'parameters' => [
-                ['$ref' => '#/components/parameters/OrderResource'],
-                ['$ref' => '#/components/parameters/Id'],
-            ],
-            'get' => [
-                'tags' => ['Resources'],
-                'summary' => 'Show a record for a supported resource',
-                'operationId' => 'showOrderResource',
-                'responses' => [
-                    '200' => ['$ref' => '#/components/responses/ResourceRecord'],
-                    '404' => ['$ref' => '#/components/responses/NotFound'],
-                ],
-            ],
-            'put' => [
-                'tags' => ['Resources'],
-                'summary' => 'Replace a record for a supported resource',
-                'operationId' => 'replaceOrderResource',
-                'requestBody' => ['$ref' => '#/components/requestBodies/GenericResource'],
-                'responses' => [
-                    '200' => ['$ref' => '#/components/responses/ResourceRecord'],
-                    '404' => ['$ref' => '#/components/responses/NotFound'],
-                    '422' => ['$ref' => '#/components/responses/ValidationError'],
-                ],
-            ],
-            'patch' => [
-                'tags' => ['Resources'],
-                'summary' => 'Partially update a record for a supported resource',
-                'operationId' => 'updateOrderResource',
-                'requestBody' => ['$ref' => '#/components/requestBodies/GenericResource'],
-                'responses' => [
-                    '200' => ['$ref' => '#/components/responses/ResourceRecord'],
-                    '404' => ['$ref' => '#/components/responses/NotFound'],
-                    '422' => ['$ref' => '#/components/responses/ValidationError'],
-                ],
-            ],
-            'delete' => [
-                'tags' => ['Resources'],
-                'summary' => 'Delete a record for a supported resource',
-                'operationId' => 'deleteOrderResource',
-                'responses' => [
-                    '200' => ['$ref' => '#/components/responses/DeleteResponse'],
-                    '404' => ['$ref' => '#/components/responses/NotFound'],
-                ],
-            ],
-        ],
     ],
     'components' => [
         'parameters' => [
@@ -179,37 +107,8 @@ return [
                 'required' => true,
                 'schema' => ['type' => 'integer', 'minimum' => 1],
             ],
-            'OrderResource' => [
-                'name' => 'resource',
-                'in' => 'path',
-                'required' => true,
-                'schema' => [
-                    'type' => 'string',
-                    'enum' => [
-                        'carts',
-                        'cart-items',
-                        'cart_items',
-                        'orders',
-                        'order-items',
-                        'order_items',
-                        'discounts',
-                        'order-discounts',
-                        'order_discounts',
-                        'warranty-requests',
-                        'warranty_requests',
-                    ],
-                ],
-            ],
         ],
         'requestBodies' => [
-            'GenericResource' => [
-                'required' => false,
-                'content' => [
-                    'application/json' => [
-                        'schema' => ['$ref' => '#/components/schemas/GenericResourceRequest'],
-                    ],
-                ],
-            ],
         ],
         'responses' => [
             'OpenApiDocument' => [
@@ -217,22 +116,6 @@ return [
                 'content' => [
                     'application/json' => [
                         'schema' => ['type' => 'object', 'additionalProperties' => true],
-                    ],
-                ],
-            ],
-            'ResourceCollection' => [
-                'description' => 'Records returned',
-                'content' => [
-                    'application/json' => [
-                        'schema' => ['$ref' => '#/components/schemas/ResourceCollectionResponse'],
-                    ],
-                ],
-            ],
-            'ResourceRecord' => [
-                'description' => 'Record returned',
-                'content' => [
-                    'application/json' => [
-                        'schema' => ['$ref' => '#/components/schemas/ResourceRecordResponse'],
                     ],
                 ],
             ],
@@ -246,14 +129,6 @@ return [
             ],
             'NotFound' => [
                 'description' => 'Record not found',
-                'content' => [
-                    'application/json' => [
-                        'schema' => ['$ref' => '#/components/schemas/ErrorResponse'],
-                    ],
-                ],
-            ],
-            'UnsupportedResource' => [
-                'description' => 'Resource is not supported',
                 'content' => [
                     'application/json' => [
                         'schema' => ['$ref' => '#/components/schemas/ErrorResponse'],
@@ -284,35 +159,22 @@ return [
             ],
             'CartItemInput' => [
                 'type' => 'object',
-                'required' => ['product_variant_id', 'product_name', 'price', 'quantity'],
+                'required' => ['product_variant_id', 'quantity'],
                 'properties' => [
                     'product_variant_id' => ['type' => 'integer', 'example' => 1],
-                    'product_name' => ['type' => 'string', 'maxLength' => 255],
-                    'color' => ['type' => 'string', 'nullable' => true, 'maxLength' => 50],
-                    'ram' => ['type' => 'string', 'nullable' => true, 'maxLength' => 50],
-                    'storage' => ['type' => 'string', 'nullable' => true, 'maxLength' => 50],
-                    'price' => ['type' => 'number', 'format' => 'float', 'minimum' => 0],
                     'quantity' => ['type' => 'integer', 'minimum' => 1],
-                    'subtotal' => ['type' => 'number', 'format' => 'float', 'minimum' => 0, 'nullable' => true],
                 ],
             ],
             'OrderCreateRequest' => [
                 'type' => 'object',
-                'required' => ['user_id', 'receiver_name', 'receiver_phone', 'shipping_address', 'shipping_method'],
+                'required' => ['receiver_name', 'receiver_phone', 'shipping_address', 'shipping_method', 'payment_method', 'items'],
                 'properties' => [
-                    'user_id' => ['type' => 'integer', 'example' => 1],
-                    'order_code' => ['type' => 'string', 'nullable' => true, 'maxLength' => 191],
                     'receiver_name' => ['type' => 'string', 'maxLength' => 255],
                     'receiver_phone' => ['type' => 'string', 'maxLength' => 20],
                     'receiver_email' => ['type' => 'string', 'format' => 'email', 'nullable' => true, 'maxLength' => 191],
                     'shipping_address' => ['type' => 'string'],
                     'shipping_method' => ['type' => 'string', 'maxLength' => 50, 'example' => 'standard'],
-                    'total_amount' => ['type' => 'number', 'format' => 'float', 'minimum' => 0, 'nullable' => true],
-                    'discount_amount' => ['type' => 'number', 'format' => 'float', 'minimum' => 0, 'nullable' => true],
-                    'final_amount' => ['type' => 'number', 'format' => 'float', 'minimum' => 0, 'nullable' => true],
-                    'status' => ['type' => 'string', 'nullable' => true, 'maxLength' => 20, 'example' => 'pending'],
-                    'payment_status' => ['type' => 'string', 'nullable' => true, 'maxLength' => 20, 'example' => 'unpaid'],
-                    'cancel_reason' => ['type' => 'string', 'nullable' => true],
+                    'payment_method' => ['type' => 'string', 'enum' => ['cod', 'vnpay']],
                     'note' => ['type' => 'string', 'nullable' => true],
                     'items' => [
                         'type' => 'array',
@@ -326,31 +188,18 @@ return [
             ],
             'OrderItemInput' => [
                 'type' => 'object',
-                'required' => ['product_variant_id', 'product_name', 'price', 'quantity'],
+                'required' => ['product_variant_id', 'quantity'],
                 'properties' => [
                     'product_variant_id' => ['type' => 'integer', 'example' => 1],
-                    'product_name' => ['type' => 'string', 'maxLength' => 255],
-                    'color' => ['type' => 'string', 'nullable' => true, 'maxLength' => 50],
-                    'ram' => ['type' => 'string', 'nullable' => true, 'maxLength' => 50],
-                    'storage' => ['type' => 'string', 'nullable' => true, 'maxLength' => 50],
-                    'price' => ['type' => 'number', 'format' => 'float', 'minimum' => 0],
                     'quantity' => ['type' => 'integer', 'minimum' => 1],
-                    'subtotal' => ['type' => 'number', 'format' => 'float', 'minimum' => 0, 'nullable' => true],
                 ],
             ],
             'OrderDiscountInput' => [
                 'type' => 'object',
-                'required' => ['discount_id', 'discount_code', 'discount_amount'],
                 'properties' => [
-                    'discount_id' => ['type' => 'integer'],
-                    'discount_code' => ['type' => 'string', 'maxLength' => 191],
-                    'discount_amount' => ['type' => 'number', 'format' => 'float', 'minimum' => 0],
+                    'discount_id' => ['type' => 'integer', 'nullable' => true],
+                    'discount_code' => ['type' => 'string', 'maxLength' => 191, 'nullable' => true],
                 ],
-            ],
-            'GenericResourceRequest' => [
-                'type' => 'object',
-                'description' => 'Payload is filtered by the target model fillable fields. Supported resources include carts, cart items, orders, order items, discounts, order discounts, and warranty requests.',
-                'additionalProperties' => true,
             ],
             'CartItem' => [
                 'type' => 'object',

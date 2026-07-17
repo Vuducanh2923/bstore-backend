@@ -22,8 +22,9 @@ return new class extends Migration
 
         if (! Schema::hasTable('user_addresses')) {
             Schema::create('user_addresses', function (Blueprint $table) {
+                $table->engine = 'InnoDB';
                 $table->id();
-                $table->unsignedBigInteger('user_id')->index();
+                $table->unsignedBigInteger('user_id');
                 $table->string('receiver_name', 100);
                 $table->string('receiver_phone', 30);
                 $table->string('receiver_email', 191)->nullable();
@@ -33,6 +34,11 @@ return new class extends Migration
                 $table->string('ward', 100)->nullable();
                 $table->boolean('is_default')->default(false);
                 $table->timestamps();
+
+                $table->foreign('user_id')
+                    ->references('id')
+                    ->on('users')
+                    ->cascadeOnDelete();
             });
         }
     }

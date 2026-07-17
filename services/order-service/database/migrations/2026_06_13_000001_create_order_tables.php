@@ -9,12 +9,14 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('carts', function (Blueprint $table) {
+            $table->engine = 'InnoDB';
             $table->id();
             $table->unsignedBigInteger('user_id')->index();
             $table->string('status', 20)->nullable()->default('active');
         });
 
         Schema::create('cart_items', function (Blueprint $table) {
+            $table->engine = 'InnoDB';
             $table->id();
             $table->unsignedBigInteger('cart_id')->index();
             $table->unsignedBigInteger('product_variant_id')->index();
@@ -25,11 +27,15 @@ return new class extends Migration
             $table->decimal('price', 15, 2)->default(0);
             $table->unsignedInteger('quantity')->default(1);
             $table->decimal('subtotal', 15, 2)->default(0);
+            $table->unique(['cart_id', 'product_variant_id']);
+            $table->foreign('cart_id')->references('id')->on('carts')->cascadeOnDelete();
         });
 
         Schema::create('orders', function (Blueprint $table) {
+            $table->engine = 'InnoDB';
             $table->id();
             $table->unsignedBigInteger('user_id')->index();
+            $table->unsignedBigInteger('cart_id')->nullable()->index();
             $table->string('order_code', 191)->nullable()->unique();
             $table->string('receiver_name');
             $table->string('receiver_phone', 20);
@@ -44,9 +50,14 @@ return new class extends Migration
             $table->text('cancel_reason')->nullable();
             $table->text('note')->nullable();
             $table->timestamp('created_at')->nullable();
+            $table->string('inventory_reference', 191)->nullable()->unique();
+            $table->string('inventory_state', 20)->nullable();
+            $table->timestamp('inventory_updated_at')->nullable();
+            $table->foreign('cart_id')->references('id')->on('carts')->nullOnDelete();
         });
 
         Schema::create('order_items', function (Blueprint $table) {
+            $table->engine = 'InnoDB';
             $table->id();
             $table->unsignedBigInteger('order_id')->index();
             $table->unsignedBigInteger('product_variant_id')->index();
@@ -57,9 +68,12 @@ return new class extends Migration
             $table->decimal('price', 15, 2)->default(0);
             $table->unsignedInteger('quantity')->default(1);
             $table->decimal('subtotal', 15, 2)->default(0);
+            $table->unique(['order_id', 'product_variant_id']);
+            $table->foreign('order_id')->references('id')->on('orders')->cascadeOnDelete();
         });
 
         Schema::create('discounts', function (Blueprint $table) {
+            $table->engine = 'InnoDB';
             $table->id();
             $table->string('code', 191)->unique();
             $table->string('name');
@@ -74,14 +88,19 @@ return new class extends Migration
         });
 
         Schema::create('order_discounts', function (Blueprint $table) {
+            $table->engine = 'InnoDB';
             $table->id();
             $table->unsignedBigInteger('order_id')->index();
             $table->unsignedBigInteger('discount_id')->index();
             $table->string('discount_code', 191);
             $table->decimal('discount_amount', 15, 2)->default(0);
+            $table->unique(['order_id', 'discount_id']);
+            $table->foreign('order_id')->references('id')->on('orders')->cascadeOnDelete();
+            $table->foreign('discount_id')->references('id')->on('discounts')->restrictOnDelete();
         });
 
         Schema::create('warranty_requests', function (Blueprint $table) {
+            $table->engine = 'InnoDB';
             $table->id();
             $table->unsignedBigInteger('user_id')->index();
             $table->unsignedBigInteger('order_id')->index();
@@ -91,6 +110,8 @@ return new class extends Migration
             $table->string('image_url', 500)->nullable();
             $table->string('status', 20)->nullable()->default('pending');
             $table->text('admin_note')->nullable();
+            $table->foreign('order_id')->references('id')->on('orders')->cascadeOnDelete();
+            $table->foreign('order_item_id')->references('id')->on('order_items')->cascadeOnDelete();
         });
     }
 

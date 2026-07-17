@@ -23,6 +23,7 @@ beforeEach(function () {
         $table->string('status', 20)->nullable()->default('pending');
         $table->string('payment_status', 20)->nullable()->default('unpaid');
         $table->string('payment_method', 50)->nullable();
+        $table->decimal('final_amount', 15, 2)->default(0);
         $table->timestamp('paid_at')->nullable();
         $table->timestamp('updated_at')->nullable();
     });
@@ -33,11 +34,12 @@ test('internal payment status endpoint marks an order paid without assigning sta
         'user_id' => 10,
         'status' => 'pending',
         'payment_status' => 'pending',
+        'payment_method' => 'vnpay',
+        'final_amount' => 125000,
     ]);
 
-    $this->patchJson("/api/internal/orders/{$orderId}/payment-status", [
+    $this->withHeaders(internalServiceHeaders())->patchJson("/api/internal/orders/{$orderId}/payment-status", [
         'payment_status' => 'paid',
-        'payment_method' => 'vnpay',
         'paid_at' => '2026-07-02 12:30:00',
     ])
         ->assertOk()
@@ -56,11 +58,40 @@ test('internal payment status endpoint marks an order paid without assigning sta
 });
 
 test('internal payment status endpoint returns not found for missing order', function () {
-    $this->patchJson('/api/internal/orders/999/payment-status', [
+    $this->withHeaders(internalServiceHeaders())->patchJson('/api/internal/orders/999/payment-status', [
         'payment_status' => 'paid',
-        'payment_method' => 'vnpay',
         'paid_at' => '2026-07-02 12:30:00',
     ])
         ->assertNotFound()
         ->assertJsonPath('success', false);
+});
+
+test('internal payment context enforces optional customer ownership', function () {
+    $orderId = DB::connection('bstore_order')->table('orders')->insertGetId([
+        'user_id' => 10,
+        'status' => 'pending',
+        'payment_status' => 'unpaid',
+        'payment_method' => 'vnpay',
+        'final_amount' => 125000,
+    ]);
+
+    $this->withHeaders(internalServiceHeaders())
+        ->getJson("/api/internal/orders/{$orderId}/payment-context?customer_id=10")
+        ->assertOk()
+        ->assertJsonPath('data.customer_id', 10)
+        ->assertJsonPath('data.final_amount', 125000)
+        ->assertJsonPath('data.payment_method', 'vnpay')
+        ->assertJsonPath('data.order_status', 'pending');
+
+    $this->withHeaders(internalServiceHeaders())
+        ->getJson("/api/internal/orders/{$orderId}/payment-context?customer_id=11")
+        ->assertNotFound();
+});
+
+test('internal endpoints deny requests without shared token', function () {
+    expect(config('services.internal.token'))->toBe('test-internal-token');
+    $this->getJson('/api/internal/orders/1/payment-context')->assertUnauthorized();
+    $this->patchJson('/api/internal/orders/1/payment-status', [
+        'payment_status' => 'paid',
+    ])->assertUnauthorized();
 });

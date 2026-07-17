@@ -3,6 +3,7 @@
 use App\Services\AuthTokenService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 
@@ -21,7 +22,7 @@ beforeEach(function () {
             'prefix' => '',
             'foreign_key_constraints' => false,
         ],
-        'services.auth.url' => null,
+        'services.auth.url' => 'http://auth.test',
     ]);
 
     DB::purge('bstore_order');
@@ -152,6 +153,30 @@ beforeEach(function () {
         ['id' => 3, 'role_id' => 2, 'full_name' => 'Staff Three', 'email' => 'staff3@example.com', 'phone' => '0900000003'],
         ['id' => 10, 'role_id' => 3, 'full_name' => 'Customer Ten', 'email' => 'customer@example.com', 'phone' => '0900000010'],
     ]);
+
+    Http::fake(function ($request) {
+        if (str_contains($request->url(), '/api/internal/payments/')) {
+            return Http::response([
+                'success' => true,
+                'data' => ['status' => config('testing.refund_provider_status', 'refunded')],
+            ]);
+        }
+
+        $userId = (int) basename($request->url());
+        $user = DB::connection('bstore_auth')->table('users')->find($userId);
+
+        return $user
+            ? Http::response([
+                'success' => true,
+                'data' => [
+                    'id' => $user->id,
+                    'full_name' => $user->full_name,
+                    'email' => $user->email,
+                    'phone' => $user->phone,
+                ],
+            ])
+            : Http::response(['success' => false], 404);
+    });
 });
 
 function orderWorkflowToken(int $id, string $role, string $email): string
@@ -274,7 +299,7 @@ test('customer cancel request can be approved and creates refund for paid online
 
 test('refund flow is restricted to assigned staff or admin', function () {
     $orderId = insertWorkflowOrder([
-        'status' => 'processing',
+        'status' => 'delivered',
         'payment_status' => 'paid',
         'payment_method' => 'vnpay',
         'assigned_staff_id' => 2,
@@ -305,9 +330,8 @@ test('refund flow is restricted to assigned staff or admin', function () {
         ->assertJsonPath('data.status', 'approved');
 
     $this->withToken(orderWorkflowToken(2, 'STAFF', 'staff2@example.com'))
-        ->putJson("/api/refunds/{$refundId}/completed", [
-            'refund_method' => 'vnpay',
-            'refund_transaction' => 'RF123',
+        ->putJson("/api/refunds/{$refundId}/refunding", [
+            'admin_note' => 'Gui VNPay',
         ])
         ->assertOk()
         ->assertJsonPath('data.status', 'refunded');
@@ -316,6 +340,85 @@ test('refund flow is restricted to assigned staff or admin', function () {
         'id' => $orderId,
         'status' => 'refunded',
         'payment_status' => 'refunded',
+    ], 'bstore_order');
+
+    Http::assertSent(fn ($request): bool => str_contains($request->url(), '/api/internal/payments/')
+        && $request->hasHeader('X-Internal-Service-Token', 'test-internal-token')
+        && $request['idempotency_key'] === "refund-{$refundId}"
+        && $request['requested_by'] === 'user2'
+    );
+});
+
+test('customer refund validates delivered paid amount and rejects duplicates', function () {
+    $processingOrderId = insertWorkflowOrder([
+        'status' => 'processing',
+        'payment_status' => 'paid',
+        'payment_method' => 'vnpay',
+    ]);
+    $customer = orderWorkflowToken(10, 'CUSTOMER', 'customer@example.com');
+
+    $this->withToken($customer)->postJson('/api/refunds', [
+        'order_id' => $processingOrderId,
+        'reason' => 'San pham loi',
+    ])->assertUnprocessable();
+
+    $deliveredOrderId = insertWorkflowOrder([
+        'status' => 'delivered',
+        'payment_status' => 'paid',
+        'payment_method' => 'vnpay',
+        'final_amount' => 100000,
+    ]);
+    $this->withToken($customer)->postJson('/api/refunds', [
+        'order_id' => $deliveredOrderId,
+        'reason' => 'San pham loi',
+        'amount' => 100001,
+    ])->assertUnprocessable();
+
+    $this->withToken($customer)->postJson('/api/refunds', [
+        'order_id' => $deliveredOrderId,
+        'reason' => 'San pham loi',
+        'amount' => 100000,
+    ])->assertCreated();
+    $this->withToken($customer)->postJson('/api/refunds', [
+        'order_id' => $deliveredOrderId,
+        'reason' => 'Gui trung',
+        'amount' => 100000,
+    ])->assertUnprocessable();
+});
+
+test('online refund remains refunding while provider processes and retries idempotently', function () {
+    config(['testing.refund_provider_status' => 'processing']);
+    $orderId = insertWorkflowOrder([
+        'status' => 'delivered',
+        'payment_status' => 'paid',
+        'payment_method' => 'vnpay',
+        'assigned_staff_id' => 2,
+        'assigned_staff_name' => 'Staff Two',
+        'assigned_at' => now(),
+    ]);
+    $refundId = $this->withToken(orderWorkflowToken(10, 'CUSTOMER', 'customer@example.com'))
+        ->postJson('/api/refunds', [
+            'order_id' => $orderId,
+            'reason' => 'San pham loi',
+        ])->assertCreated()->json('data.id');
+    $staff = orderWorkflowToken(2, 'STAFF', 'staff2@example.com');
+    $this->withToken($staff)->putJson("/api/refunds/{$refundId}/approve")->assertOk();
+
+    $this->withToken($staff)->putJson("/api/refunds/{$refundId}/refunding")
+        ->assertOk()->assertJsonPath('data.status', 'refunding');
+    $this->withToken($staff)->putJson("/api/refunds/{$refundId}/refunding")
+        ->assertOk()->assertJsonPath('data.status', 'refunding');
+
+    $requests = Http::recorded()
+        ->filter(fn (array $pair): bool => str_contains($pair[0]->url(), '/api/internal/payments/'))
+        ->values();
+    expect($requests)->toHaveCount(2)
+        ->and($requests[0][0]['idempotency_key'])->toBe("refund-{$refundId}")
+        ->and($requests[1][0]['idempotency_key'])->toBe("refund-{$refundId}");
+    $this->assertDatabaseHas('orders', [
+        'id' => $orderId,
+        'status' => 'delivered',
+        'payment_status' => 'paid',
     ], 'bstore_order');
 });
 

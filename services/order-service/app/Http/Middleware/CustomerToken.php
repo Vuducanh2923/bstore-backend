@@ -22,7 +22,10 @@ class CustomerToken
             ], 401);
         }
 
-        if (strtoupper((string) ($payload['role'] ?? '')) !== 'CUSTOMER') {
+        // Administrators may also use the storefront for their own purchases.
+        // Administrative operations remain protected by the separate
+        // `admin.token` middleware and `/admin` route prefix.
+        if (! in_array(strtoupper((string) ($payload['role'] ?? '')), ['CUSTOMER', 'ADMIN'], true)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Khong co quyen truy cap',

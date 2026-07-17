@@ -2,7 +2,9 @@
 
 use App\Http\Middleware\Admin;
 use App\Http\Middleware\AdminOrStaff;
+use App\Http\Middleware\Authenticated;
 use App\Http\Middleware\Customer;
+use App\Http\Middleware\InternalService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -24,7 +26,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'admin' => Admin::class,
             'admin.or.staff' => AdminOrStaff::class,
+            'authenticated' => Authenticated::class,
             'customer' => Customer::class,
+            'internal.service' => InternalService::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

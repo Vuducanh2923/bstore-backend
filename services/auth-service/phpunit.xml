@@ -19,6 +19,8 @@
     </source>
     <php>
         <env name="APP_ENV" value="testing"/>
+        <env name="AUTH_TOKEN_KEY" value="base64:dGVzdC1hdXRoLXRva2VuLWtleS0zMi1ieXRlcy1sb25nISE="/>
+        <env name="INTERNAL_SERVICE_TOKEN" value="test-internal-service-token-at-least-32-bytes"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>

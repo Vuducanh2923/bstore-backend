@@ -1,5 +1,8 @@
 <?php
 
+use App\Http\Middleware\AdminToken;
+use App\Http\Middleware\CustomerToken;
+use App\Http\Middleware\InternalService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -18,7 +21,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        $middleware->alias([
+            'admin.token' => AdminToken::class,
+            'customer.token' => CustomerToken::class,
+            'internal.service' => InternalService::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->render(function (ValidationException $exception, Request $request) {

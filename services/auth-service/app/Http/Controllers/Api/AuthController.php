@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\ForgotPasswordRequest;
 use App\Http\Requests\Auth\LoginRequest;
+use App\Http\Requests\Auth\LogoutRequest;
+use App\Http\Requests\Auth\RefreshTokenRequest;
 use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Requests\Auth\ResendRegisterOtpRequest;
 use App\Http\Requests\Auth\ResetPasswordRequest;
@@ -46,6 +48,14 @@ class AuthController extends Controller
             ], 403);
         }
 
+        if ($result['status'] === 'inactive') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tai khoan da bi vo hieu hoa',
+                'data' => null,
+            ], 403);
+        }
+
         if (! $result['user']) {
             return response()->json([
                 'success' => false,
@@ -58,6 +68,55 @@ class AuthController extends Controller
             'success' => true,
             'message' => 'Dang nhap thanh cong',
             'data' => $result['user'],
+        ]);
+    }
+
+    public function refresh(RefreshTokenRequest $request): JsonResponse
+    {
+        $result = $this->authService->refresh($request->validated('refresh_token'));
+
+        if ($result['status'] === 'inactive') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tai khoan da bi vo hieu hoa',
+                'data' => null,
+            ], 403);
+        }
+
+        if (! $result['user']) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Refresh token khong hop le hoac da het han',
+                'data' => null,
+            ], 401);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Lam moi phien dang nhap thanh cong',
+            'data' => $result['user'],
+        ]);
+    }
+
+    public function logout(LogoutRequest $request): JsonResponse
+    {
+        $revoked = $this->authService->logout(
+            $request->bearerToken(),
+            $request->validated('refresh_token'),
+        );
+
+        if (! $revoked) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Phien dang nhap khong hop le hoac da bi thu hoi',
+                'data' => null,
+            ], 401);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Dang xuat thanh cong',
+            'data' => null,
         ]);
     }
 

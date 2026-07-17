@@ -1,5 +1,8 @@
 <?php
 
+use App\Services\AuthTokenService;
+use Tests\TestCase;
+
 /*
 |--------------------------------------------------------------------------
 | Test Case
@@ -11,9 +14,17 @@
 |
 */
 
-pest()->extend(Tests\TestCase::class)
+pest()->extend(TestCase::class)
  // ->use(Illuminate\Foundation\Testing\RefreshDatabase::class)
     ->in('Feature');
+
+beforeEach(function () {
+    config([
+        'auth.token_key' => 'order-service-test-token-key-32-bytes-minimum',
+        'services.internal.token' => 'test-internal-token',
+        'services.auth.url' => null,
+    ]);
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -44,4 +55,14 @@ expect()->extend('toBeOne', function () {
 function something()
 {
     // ..
+}
+
+function internalServiceHeaders(): array
+{
+    return ['X-Internal-Service-Token' => 'test-internal-token'];
+}
+
+function customerAccessToken(int $userId = 10): string
+{
+    return app(AuthTokenService::class)->generate($userId, 'CUSTOMER', "customer{$userId}@example.com");
 }

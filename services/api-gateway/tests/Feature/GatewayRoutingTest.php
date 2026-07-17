@@ -8,11 +8,13 @@ beforeEach(function () {
         'microservices.services.catalog.url' => 'http://catalog.test',
         'microservices.services.order.url' => 'http://order.test',
         'microservices.services.payment.url' => 'http://payment.test',
+        'microservices.internal_token' => 'test-internal-token',
     ]);
 });
 
 test('admin customer routes are forwarded to auth service', function () {
     Http::fake([
+        'http://auth.test/api/internal/auth/introspect' => Http::response(['data' => ['active' => true]]),
         'http://auth.test/api/admin/customers' => Http::response([
             'success' => true,
             'data' => [],
@@ -42,6 +44,7 @@ test('existing admin catalog routes still go to catalog service', function () {
 
 test('admin order routes are forwarded to order service', function () {
     Http::fake([
+        'http://auth.test/api/internal/auth/introspect' => Http::response(['data' => ['active' => true]]),
         'http://order.test/api/admin/orders' => Http::response([
             'success' => true,
             'data' => [],
@@ -120,6 +123,7 @@ test('cart detail routes are forwarded to order service', function () {
 
 test('profile routes are forwarded to auth service', function () {
     Http::fake([
+        'http://auth.test/api/internal/auth/introspect' => Http::response(['data' => ['active' => true]]),
         'http://auth.test/api/profile' => Http::response([
             'success' => true,
             'data' => ['id' => 1],
@@ -136,6 +140,7 @@ test('profile routes are forwarded to auth service', function () {
 
 test('customer order routes are forwarded to order service', function () {
     Http::fake([
+        'http://auth.test/api/internal/auth/introspect' => Http::response(['data' => ['active' => true]]),
         'http://order.test/api/customer/orders' => Http::response([
             'success' => true,
             'data' => [],
@@ -164,6 +169,7 @@ test('customer order routes are forwarded to order service', function () {
 
 test('refund and complaint routes are forwarded to order service', function () {
     Http::fake([
+        'http://auth.test/api/internal/auth/introspect' => Http::response(['data' => ['active' => true]]),
         'http://order.test/api/refunds' => Http::response([
             'success' => true,
             'data' => [],
@@ -208,45 +214,20 @@ test('refund and complaint routes are forwarded to order service', function () {
         && $request->method() === 'PUT');
 });
 
-test('internal routes are forwarded to the owning service', function () {
-    Http::fake([
-        'http://order.test/api/internal/customers/10/orders' => Http::response([
-            'success' => true,
-            'data' => [],
-        ]),
-        'http://order.test/api/internal/orders/99/payment-status' => Http::response([
-            'success' => true,
-            'data' => ['order_id' => 99, 'payment_status' => 'paid'],
-        ]),
-        'http://order.test/api/internal/orders/99/cart/clear' => Http::response([
-            'success' => true,
-            'data' => ['order_id' => 99, 'deleted_items' => 2],
-        ]),
-        'http://payment.test/api/internal/orders/99/payment' => Http::response([
-            'success' => true,
-            'data' => ['status' => 'paid'],
-        ]),
-    ]);
+test('internal routes are never exposed by the gateway', function () {
+    Http::fake();
 
-    $this->getJson('/api/internal/customers/10/orders')->assertOk();
-    $this->patchJson('/api/internal/orders/99/payment-status', [
-        'payment_status' => 'paid',
-        'status' => 'confirmed',
-    ])->assertOk();
-    $this->postJson('/api/internal/orders/99/cart/clear')->assertOk();
-    $this->getJson('/api/internal/orders/99/payment')->assertOk();
+    $this->getJson('/api/internal/customers/10/orders')->assertNotFound();
+    $this->patchJson('/api/internal/orders/99/payment-status', ['payment_status' => 'paid'])->assertNotFound();
+    $this->postJson('/api/internal/orders/99/cart/clear')->assertNotFound();
+    $this->getJson('/api/internal/orders/99/payment')->assertNotFound();
 
-    Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/internal/customers/10/orders');
-    Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/internal/orders/99/payment-status'
-        && $request->method() === 'PATCH'
-        && $request['payment_status'] === 'paid');
-    Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/internal/orders/99/cart/clear'
-        && $request->method() === 'POST');
-    Http::assertSent(fn ($request) => $request->url() === 'http://payment.test/api/internal/orders/99/payment');
+    Http::assertNothingSent();
 });
 
 test('VNPAY create route is forwarded to payment service with authorization header', function () {
     Http::fake([
+        'http://auth.test/api/internal/auth/introspect' => Http::response(['data' => ['active' => true]]),
         'http://payment.test/api/payments/vnpay/create' => Http::response([
             'success' => true,
             'data' => ['payment_url' => 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html'],
@@ -264,6 +245,50 @@ test('VNPAY create route is forwarded to payment service with authorization head
     Http::assertSent(fn ($request) => $request->url() === 'http://payment.test/api/payments/vnpay/create'
         && $request->method() === 'POST'
         && $request->hasHeader('authorization', 'Bearer customer-token'));
+});
+
+test('revoked access tokens are rejected before forwarding', function () {
+    Http::fake([
+        'http://auth.test/api/internal/auth/introspect' => Http::response(['data' => ['active' => false]]),
+    ]);
+
+    $this->withHeader('Authorization', 'Bearer revoked-token')
+        ->getJson('/api/profile')
+        ->assertUnauthorized();
+
+    Http::assertNotSent(fn ($request) => $request->url() === 'http://auth.test/api/profile');
+});
+
+test('public catalog routes ignore an invalid authorization header', function (string $path) {
+    Http::fake([
+        'http://catalog.test/api/*' => Http::response(['success' => true, 'data' => []]),
+    ]);
+
+    $this->withHeader('Authorization', 'Bearer expired-or-invalid-token')
+        ->getJson('/api/'.$path)
+        ->assertOk();
+
+    Http::assertNotSent(fn ($request) => $request->url() === 'http://auth.test/api/internal/auth/introspect');
+})->with([
+    'products' => 'products?page=1&per_page=12',
+    'product sale' => 'products/sale',
+    'categories' => 'categories',
+    'brands' => 'brands',
+    'banners' => 'banners',
+    'home banners' => 'home/banners',
+]);
+
+test('external callers cannot inject the internal service token header', function () {
+    Http::fake([
+        'http://catalog.test/api/products' => Http::response(['success' => true, 'data' => []]),
+    ]);
+
+    $this->withHeader('X-Internal-Service-Token', 'attacker-token')
+        ->getJson('/api/products')
+        ->assertOk();
+
+    Http::assertSent(fn ($request) => $request->url() === 'http://catalog.test/api/products'
+        && ! $request->hasHeader('x-internal-service-token'));
 });
 
 test('VNPAY return route is forwarded to payment service with full query string and no auth requirement', function () {

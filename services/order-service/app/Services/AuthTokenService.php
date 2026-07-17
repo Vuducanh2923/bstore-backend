@@ -4,6 +4,8 @@ namespace App\Services;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
+use RuntimeException;
 
 class AuthTokenService
 {
@@ -15,11 +17,15 @@ class AuthTokenService
         $expiresAt = $issuedAt + ((int) config('auth.token_ttl', 1440) * 60);
 
         return $this->encode([
+            'token_type' => 'access',
             'sub' => $userId,
             'email' => $email,
             'role' => strtoupper($role),
             'iat' => $issuedAt,
+            'nbf' => $issuedAt,
             'exp' => $expiresAt,
+            'sid' => (string) Str::uuid(),
+            'jti' => (string) Str::uuid(),
         ]);
     }
 
@@ -64,11 +70,21 @@ class AuthTokenService
         $decodedHeader = $this->jsonDecode($header);
         $decodedPayload = $this->jsonDecode($payload);
 
-        if (($decodedHeader['alg'] ?? null) !== self::ALG) {
+        if (($decodedHeader['typ'] ?? null) !== 'JWT' || ($decodedHeader['alg'] ?? null) !== self::ALG) {
             return null;
         }
 
-        if (($decodedPayload['exp'] ?? 0) < Carbon::now()->timestamp) {
+        $now = Carbon::now()->timestamp;
+
+        if (
+            ($decodedPayload['token_type'] ?? null) !== 'access'
+            || empty($decodedPayload['sub'])
+            || empty($decodedPayload['sid'])
+            || empty($decodedPayload['jti'])
+            || ! isset($decodedPayload['iat'], $decodedPayload['nbf'], $decodedPayload['exp'])
+            || (int) $decodedPayload['nbf'] > $now
+            || (int) $decodedPayload['exp'] < $now
+        ) {
             return null;
         }
 
@@ -95,14 +111,24 @@ class AuthTokenService
 
     private function key(): string
     {
-        $key = (string) config('auth.token_key', config('app.key'));
+        $key = trim((string) config('auth.token_key'));
+
+        if ($key === '') {
+            throw new RuntimeException('AUTH_TOKEN_KEY is required');
+        }
 
         if (str_starts_with($key, 'base64:')) {
             $decoded = base64_decode(substr($key, 7), true);
 
-            if ($decoded !== false) {
-                return $decoded;
+            if ($decoded === false) {
+                throw new RuntimeException('AUTH_TOKEN_KEY is not valid base64');
             }
+
+            $key = $decoded;
+        }
+
+        if (strlen($key) < 32) {
+            throw new RuntimeException('AUTH_TOKEN_KEY must contain at least 32 bytes');
         }
 
         return $key;

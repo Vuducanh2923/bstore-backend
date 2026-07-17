@@ -7,6 +7,14 @@ use Illuminate\Support\Facades\Schema;
 
 class Order extends Model
 {
+    public const INVENTORY_RESERVED = 'reserved';
+
+    public const INVENTORY_COMMITTED = 'committed';
+
+    public const INVENTORY_RELEASED = 'released';
+
+    public const INVENTORY_RESTORED = 'restored';
+
     public const STATUS_PENDING = 'pending';
 
     public const STATUS_PROCESSING = 'processing';
@@ -61,6 +69,7 @@ class Order extends Model
 
     protected $fillable = [
         'user_id',
+        'cart_id',
         'order_code',
         'receiver_name',
         'receiver_phone',
@@ -83,10 +92,14 @@ class Order extends Model
         'note',
         'created_at',
         'updated_at',
+        'inventory_reference',
+        'inventory_state',
+        'inventory_updated_at',
     ];
 
     protected $casts = [
         'user_id' => 'integer',
+        'cart_id' => 'integer',
         'total_amount' => 'decimal:2',
         'discount_amount' => 'decimal:2',
         'shipping_fee' => 'decimal:2',
@@ -96,6 +109,7 @@ class Order extends Model
         'assigned_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
+        'inventory_updated_at' => 'datetime',
     ];
 
     protected static function booted(): void

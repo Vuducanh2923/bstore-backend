@@ -12,6 +12,7 @@ beforeEach(function () {
             'prefix' => '',
             'foreign_key_constraints' => false,
         ],
+        'services.internal.token' => 'internal-secret',
     ]);
 
     DB::purge('bstore_payment');
@@ -56,19 +57,24 @@ test('internal payment and invoice endpoints return records by order id', functi
         'issued_at' => '2026-07-01 10:05:00',
     ]);
 
-    $this->getJson('/api/internal/orders/123/payment')
+    $this->withHeader('X-Internal-Service-Token', 'internal-secret')->getJson('/api/internal/orders/123/payment')
         ->assertOk()
         ->assertJsonPath('data.payment_method', 'bank_transfer')
         ->assertJsonPath('data.transaction_code', 'TX123')
         ->assertJsonPath('data.status', 'paid');
 
-    $this->getJson('/api/internal/orders/123/invoice')
+    $this->withHeader('X-Internal-Service-Token', 'internal-secret')->getJson('/api/internal/orders/123/invoice')
         ->assertOk()
         ->assertJsonPath('data.invoice_code', 'INV123')
         ->assertJsonPath('data.total_amount', '90000.00');
 });
 
 test('internal payment endpoints return not found when order has no records', function () {
-    $this->getJson('/api/internal/orders/404/payment')->assertNotFound();
-    $this->getJson('/api/internal/orders/404/invoice')->assertNotFound();
+    $this->withHeader('X-Internal-Service-Token', 'internal-secret')->getJson('/api/internal/orders/404/payment')->assertNotFound();
+    $this->withHeader('X-Internal-Service-Token', 'internal-secret')->getJson('/api/internal/orders/404/invoice')->assertNotFound();
+});
+
+test('internal payment endpoints fail closed without service credential', function () {
+    $this->getJson('/api/internal/orders/123/payment')->assertUnauthorized();
+    $this->postJson('/api/internal/payments/123/refunds', [])->assertUnauthorized();
 });

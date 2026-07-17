@@ -42,6 +42,17 @@ beforeEach(function () {
         $table->dateTime('created_at')->nullable();
     });
 
+    Schema::connection('bstore_auth')->create('auth_sessions', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->unsignedBigInteger('user_id')->index();
+        $table->uuid('access_jti')->unique();
+        $table->char('refresh_token_hash', 64)->unique();
+        $table->dateTime('refresh_expires_at')->index();
+        $table->dateTime('last_used_at')->nullable();
+        $table->dateTime('revoked_at')->nullable()->index();
+        $table->timestamps();
+    });
+
     Schema::connection('bstore_auth')->create('email_verifications', function (Blueprint $table) {
         $table->id();
         $table->string('email', 191)->index();

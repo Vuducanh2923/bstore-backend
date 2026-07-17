@@ -55,7 +55,7 @@ class RefundController extends Controller
         $data = $request->validate([
             'order_id' => ['required', 'integer'],
             'reason' => ['required', 'string'],
-            'amount' => ['nullable', 'numeric', 'min:0'],
+            'amount' => ['nullable', 'numeric', 'gt:0'],
         ]);
 
         $refund = $this->refunds->create($data, $this->authenticatedActor($request));
@@ -109,7 +109,7 @@ class RefundController extends Controller
     public function completed(Request $request, int|string $id): JsonResponse
     {
         $data = $request->validate([
-            'refund_method' => ['nullable', 'string', 'max:50'],
+            'refund_method' => ['required', 'string', 'max:50'],
             'refund_transaction' => ['nullable', 'string', 'max:191'],
             'admin_note' => ['nullable', 'string'],
             'note' => ['nullable', 'string'],

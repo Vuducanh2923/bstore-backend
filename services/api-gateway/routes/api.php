@@ -1,7 +1,7 @@
 <?php
 
-use App\Http\Controllers\SwaggerController;
 use App\Http\Controllers\Api\GatewayController;
+use App\Http\Controllers\SwaggerController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/docs/openapi.json', [SwaggerController::class, 'json'])->name('swagger.openapi');

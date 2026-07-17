@@ -11,9 +11,21 @@ class CartController extends Controller
 {
     public function __construct(private readonly CartService $cartService) {}
 
-    public function show(int|string $id): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $cart = $this->cartService->find((int) $id);
+        return response()->json([
+            'success' => true,
+            'message' => 'Lay gio hang thanh cong',
+            'data' => $this->cartService->forUser($this->authenticatedUserId($request)),
+        ]);
+    }
+
+    public function show(Request $request, int|string $id): JsonResponse
+    {
+        $cart = $this->cartService->findForUser(
+            $this->authenticatedUserId($request),
+            (int) $id,
+        );
 
         if (! $cart) {
             return response()->json([
@@ -40,6 +52,14 @@ class CartController extends Controller
             ], 404);
         }
 
+        if (! $result['paid']) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Chi duoc xoa gio hang cua don da thanh toan',
+                'data' => $result,
+            ], 409);
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Da xoa san pham trong gio hang sau khi thanh toan thanh cong',
@@ -50,18 +70,13 @@ class CartController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'user_id' => ['required', 'integer'],
-            'status' => ['nullable', 'string', 'max:20'],
-            'items' => ['sometimes', 'array'],
-            'items.*.product_variant_id' => ['required_with:items', 'integer'],
-            'items.*.product_name' => ['required_with:items', 'string', 'max:255'],
-            'items.*.color' => ['nullable', 'string', 'max:50'],
-            'items.*.ram' => ['nullable', 'string', 'max:50'],
-            'items.*.storage' => ['nullable', 'string', 'max:50'],
-            'items.*.price' => ['required_with:items', 'numeric', 'min:0'],
-            'items.*.quantity' => ['required_with:items', 'integer', 'min:1'],
-            'items.*.subtotal' => ['nullable', 'numeric', 'min:0'],
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.product_variant_id' => ['required', 'integer', 'min:1', 'distinct'],
+            'items.*.quantity' => ['required', 'integer', 'min:1', 'max:100'],
         ]);
+
+        $data['user_id'] = $this->authenticatedUserId($request);
+        $data['status'] = 'active';
 
         $cart = $this->cartService->create($data);
 
@@ -70,5 +85,69 @@ class CartController extends Controller
             'message' => 'Tao gio hang thanh cong',
             'data' => $cart,
         ], 201);
+    }
+
+    public function storeItem(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'cart_id' => ['required', 'integer', 'min:1'],
+            'product_variant_id' => ['required', 'integer', 'min:1'],
+            'quantity' => ['required', 'integer', 'min:1', 'max:100'],
+        ]);
+        $item = $this->cartService->addItem($this->authenticatedUserId($request), $data);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Them san pham vao gio hang thanh cong',
+            'data' => $item,
+        ], 201);
+    }
+
+    public function updateItem(Request $request, int|string $id): JsonResponse
+    {
+        $data = $request->validate([
+            'quantity' => ['required', 'integer', 'min:1', 'max:100'],
+        ]);
+        $item = $this->cartService->updateItem(
+            $this->authenticatedUserId($request),
+            (int) $id,
+            (int) $data['quantity'],
+        );
+
+        if (! $item) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Khong tim thay san pham trong gio hang',
+                'data' => null,
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cap nhat gio hang thanh cong',
+            'data' => $item,
+        ]);
+    }
+
+    public function destroyItem(Request $request, int|string $id): JsonResponse
+    {
+        if (! $this->cartService->deleteItem($this->authenticatedUserId($request), (int) $id)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Khong tim thay san pham trong gio hang',
+                'data' => null,
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Xoa san pham khoi gio hang thanh cong',
+            'data' => null,
+        ]);
+    }
+
+    private function authenticatedUserId(Request $request): int
+    {
+        return (int) data_get($request->attributes->get('auth_user'), 'id');
     }
 }

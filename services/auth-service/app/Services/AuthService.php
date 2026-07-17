@@ -29,7 +29,7 @@ class AuthService
         [$user, $otpCode] = DB::connection('bstore_auth')->transaction(function () use ($data) {
             $data['role_id'] = Role::whereRaw('UPPER(name) = ?', [User::ROLE_CUSTOMER])->firstOrFail()->id;
             $data['password'] = Hash::make($data['password']);
-            $data['status'] = $data['status'] ?? 'active';
+            $data['status'] = 'active';
 
             if (Schema::connection('bstore_auth')->hasColumn('users', 'email_verified_at')) {
                 $data['email_verified_at'] = null;
@@ -54,6 +54,10 @@ class AuthService
             return ['status' => 'invalid', 'user' => null];
         }
 
+        if (! $user->isActive()) {
+            return ['status' => 'inactive', 'user' => null];
+        }
+
         if ($this->requiresEmailVerification($user)) {
             return ['status' => 'email_unverified', 'user' => null];
         }
@@ -71,9 +75,43 @@ class AuthService
             $user->refresh()->load('role');
         }
 
-        $user->setAttribute('token', $this->tokens->generate($user));
+        foreach ($this->tokens->issue($user) as $key => $value) {
+            $user->setAttribute($key, $value);
+        }
 
         return ['status' => 'authenticated', 'user' => $user];
+    }
+
+    public function refresh(string $refreshToken): array
+    {
+        $result = $this->tokens->refresh($refreshToken);
+
+        if ($result['status'] !== 'refreshed' || ! $result['user']) {
+            return ['status' => $result['status'], 'user' => null];
+        }
+
+        $user = $result['user'];
+
+        foreach ($result['credentials'] as $key => $value) {
+            $user->setAttribute($key, $value);
+        }
+
+        return ['status' => 'refreshed', 'user' => $user];
+    }
+
+    public function logout(?string $accessToken, ?string $refreshToken): bool
+    {
+        $revoked = false;
+
+        if (is_string($accessToken) && $accessToken !== '') {
+            $revoked = $this->tokens->revokeAccessToken($accessToken) || $revoked;
+        }
+
+        if (is_string($refreshToken) && $refreshToken !== '') {
+            $revoked = $this->tokens->revokeRefreshToken($refreshToken) || $revoked;
+        }
+
+        return $revoked;
     }
 
     public function verifyRegisterOtp(string $email, string $otpCode, ?string $ip = null): array
@@ -180,6 +218,8 @@ class AuthService
             $user->forceFill([
                 'password' => Hash::make($password),
             ])->save();
+
+            $this->tokens->revokeAllForUser($user);
 
             $this->emailVerifications->clearForgotPasswordOtps($email);
 

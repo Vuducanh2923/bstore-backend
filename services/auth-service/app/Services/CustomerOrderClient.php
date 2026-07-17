@@ -34,6 +34,9 @@ class CustomerOrderClient
     private function request(): PendingRequest
     {
         return Http::acceptJson()
+            ->withHeaders([
+                'X-Internal-Service-Token' => (string) config('services.internal_service_token'),
+            ])
             ->connectTimeout((int) config('services.connect_timeout', 2))
             ->timeout((int) config('services.timeout', 5))
             ->retry(2, 100, null, false);

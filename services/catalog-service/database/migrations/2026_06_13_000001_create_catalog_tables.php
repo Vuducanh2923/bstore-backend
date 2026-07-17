@@ -9,6 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('brands', function (Blueprint $table) {
+            $table->engine = 'InnoDB';
             $table->id();
             $table->string('name');
             $table->string('slug', 191)->unique();
@@ -17,6 +18,7 @@ return new class extends Migration
         });
 
         Schema::create('categories', function (Blueprint $table) {
+            $table->engine = 'InnoDB';
             $table->id();
             $table->string('name');
             $table->string('slug', 191)->unique();
@@ -25,6 +27,7 @@ return new class extends Migration
         });
 
         Schema::create('warranty_policies', function (Blueprint $table) {
+            $table->engine = 'InnoDB';
             $table->id();
             $table->string('name');
             $table->unsignedInteger('duration_months')->default(0);
@@ -36,6 +39,7 @@ return new class extends Migration
         });
 
         Schema::create('products', function (Blueprint $table) {
+            $table->engine = 'InnoDB';
             $table->id();
             $table->unsignedBigInteger('category_id')->index();
             $table->unsignedBigInteger('brand_id')->index();
@@ -46,9 +50,13 @@ return new class extends Migration
             $table->json('specifications')->nullable();
             $table->decimal('price', 15, 2)->default(0);
             $table->string('status', 20)->nullable()->default('active');
+            $table->foreign('category_id')->references('id')->on('categories')->restrictOnDelete();
+            $table->foreign('brand_id')->references('id')->on('brands')->restrictOnDelete();
+            $table->foreign('warranty_policy_id')->references('id')->on('warranty_policies')->nullOnDelete();
         });
 
         Schema::create('product_variants', function (Blueprint $table) {
+            $table->engine = 'InnoDB';
             $table->id();
             $table->unsignedBigInteger('product_id')->index();
             $table->string('color', 50)->nullable();
@@ -59,31 +67,39 @@ return new class extends Migration
             $table->string('sku', 191)->unique();
             $table->string('barcode', 191)->nullable();
             $table->string('status', 20)->nullable()->default('active');
+            $table->foreign('product_id')->references('id')->on('products')->cascadeOnDelete();
         });
 
         Schema::create('product_images', function (Blueprint $table) {
+            $table->engine = 'InnoDB';
             $table->id();
             $table->unsignedBigInteger('product_id')->index();
             $table->unsignedBigInteger('product_variant_id')->nullable()->index();
             $table->string('image_url', 500);
             $table->string('public_id')->nullable();
             $table->boolean('is_thumbnail')->default(false);
+            $table->foreign('product_id')->references('id')->on('products')->cascadeOnDelete();
+            $table->foreign('product_variant_id')->references('id')->on('product_variants')->nullOnDelete();
         });
 
         Schema::create('inventories', function (Blueprint $table) {
+            $table->engine = 'InnoDB';
             $table->id();
             $table->unsignedBigInteger('product_variant_id')->unique();
             $table->integer('quantity')->default(0);
             $table->integer('reserved_quantity')->default(0);
+            $table->foreign('product_variant_id')->references('id')->on('product_variants')->cascadeOnDelete();
         });
 
         Schema::create('inventory_transactions', function (Blueprint $table) {
+            $table->engine = 'InnoDB';
             $table->id();
             $table->unsignedBigInteger('product_variant_id')->index();
             $table->string('type', 50);
             $table->integer('quantity');
             $table->text('note')->nullable();
             $table->unsignedBigInteger('created_by')->nullable()->index();
+            $table->foreign('product_variant_id')->references('id')->on('product_variants')->restrictOnDelete();
         });
     }
 

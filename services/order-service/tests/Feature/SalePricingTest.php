@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 
 beforeEach(function () {
@@ -19,12 +20,13 @@ beforeEach(function () {
             'prefix' => '',
             'foreign_key_constraints' => true,
         ],
+        'order.shipping.flat_fee' => 0,
     ]);
 
     DB::purge('bstore_order');
     DB::purge('bstore_catalog');
 
-    foreach (['order_discounts', 'order_items', 'orders', 'cart_items', 'carts'] as $table) {
+    foreach (['order_discounts', 'discounts', 'order_items', 'orders', 'cart_items', 'carts'] as $table) {
         Schema::connection('bstore_order')->dropIfExists($table);
     }
 
@@ -91,25 +93,53 @@ beforeEach(function () {
         $table->decimal('discount_amount', 15, 2)->default(0);
     });
 
+    Schema::connection('bstore_order')->create('discounts', function (Blueprint $table) {
+        $table->id();
+        $table->string('code')->unique();
+        $table->string('name');
+        $table->string('type');
+        $table->decimal('value', 15, 2);
+        $table->decimal('min_order_amount', 15, 2)->default(0);
+        $table->unsignedInteger('usage_limit')->nullable();
+        $table->unsignedInteger('used_count')->default(0);
+        $table->dateTime('start_date')->nullable();
+        $table->dateTime('end_date')->nullable();
+        $table->string('status')->default('active');
+    });
+
     Schema::connection('bstore_catalog')->create('products', function (Blueprint $table) {
         $table->id();
+        $table->string('name');
         $table->decimal('price', 15, 2)->default(0);
         $table->decimal('sale_percent', 5, 2)->nullable();
         $table->decimal('sale_price', 15, 2)->nullable();
         $table->boolean('is_sale')->default(false);
+        $table->string('status')->default('active');
     });
 
     Schema::connection('bstore_catalog')->create('product_variants', function (Blueprint $table) {
         $table->id();
         $table->unsignedBigInteger('product_id')->index();
         $table->decimal('price', 15, 2)->default(0);
+        $table->string('status')->default('active');
+    });
+
+    Http::fake(function ($request) {
+        return Http::response([
+            'success' => true,
+            'data' => [
+                'reference' => $request->data()['reference'] ?? basename(dirname($request->url())),
+                'status' => 'reserved',
+                'items' => [],
+            ],
+        ], str_ends_with($request->url(), '/reservations') ? 201 : 200);
     });
 });
 
 test('cart items use sale price from catalog when product is on sale', function () {
     seedCatalogProduct(1, 10, 25000000, 22500000, true);
 
-    $this->postJson('/api/carts', [
+    $this->withToken(customerAccessToken(1))->postJson('/api/carts', [
         'user_id' => 1,
         'items' => [
             [
@@ -129,7 +159,7 @@ test('cart items use sale price from catalog when product is on sale', function 
 test('cart items use catalog product price when product is not on sale', function () {
     seedCatalogProduct(2, 20, 12000000, null, false);
 
-    $this->postJson('/api/carts', [
+    $this->withToken(customerAccessToken(1))->postJson('/api/carts', [
         'user_id' => 1,
         'items' => [
             [
@@ -148,7 +178,7 @@ test('cart items use catalog product price when product is not on sale', functio
 test('zero sale price is ignored when calculating cart item price', function () {
     seedCatalogProduct(4, 40, 8989998, 0, true);
 
-    $this->postJson('/api/carts', [
+    $this->withToken(customerAccessToken(1))->postJson('/api/carts', [
         'user_id' => 1,
         'items' => [
             [
@@ -166,8 +196,19 @@ test('zero sale price is ignored when calculating cart item price', function () 
 
 test('orders use sale price and recalculate totals from catalog pricing', function () {
     seedCatalogProduct(3, 30, 25000000, 22500000, true);
+    DB::connection('bstore_order')->table('discounts')->insert([
+        'id' => 1,
+        'code' => 'SALE1M',
+        'name' => 'Sale 1M',
+        'type' => 'fixed',
+        'value' => 1000000,
+        'min_order_amount' => 0,
+        'usage_limit' => 10,
+        'used_count' => 0,
+        'status' => 'active',
+    ]);
 
-    $this->postJson('/api/orders', [
+    $this->withToken(customerAccessToken(1))->postJson('/api/orders', [
         'user_id' => 1,
         'receiver_name' => 'Nguyen Van A',
         'receiver_phone' => '0900000000',
@@ -202,7 +243,9 @@ test('orders use sale price and recalculate totals from catalog pricing', functi
 });
 
 test('vnpay order is rejected when calculated final amount is below minimum', function () {
-    $this->postJson('/api/orders', [
+    seedCatalogProduct(9, 999, 0, null, false);
+
+    $this->withToken(customerAccessToken(1))->postJson('/api/orders', [
         'user_id' => 1,
         'receiver_name' => 'Nguyen Van A',
         'receiver_phone' => '0900000000',
@@ -228,15 +271,18 @@ function seedCatalogProduct(int $productId, int $variantId, float $price, ?float
 {
     DB::connection('bstore_catalog')->table('products')->insert([
         'id' => $productId,
+        'name' => "Product {$productId}",
         'price' => $price,
         'sale_percent' => $isSale ? 10 : null,
         'sale_price' => $salePrice,
         'is_sale' => $isSale,
+        'status' => 'active',
     ]);
 
     DB::connection('bstore_catalog')->table('product_variants')->insert([
         'id' => $variantId,
         'product_id' => $productId,
         'price' => $price,
+        'status' => 'active',
     ]);
 }

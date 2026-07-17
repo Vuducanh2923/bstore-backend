@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\AuthTokenService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -11,6 +12,8 @@ use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
+    public function __construct(private readonly AuthTokenService $tokens) {}
+
     public function index(Request $request): JsonResponse
     {
         $perPage = min(100, max(1, (int) $request->query('limit', $request->query('per_page', 15))));
@@ -59,7 +62,7 @@ class UserController extends Controller
             'gender' => ['sometimes', 'nullable', Rule::in(['male', 'female', 'other'])],
             'date_of_birth' => ['sometimes', 'nullable', 'date'],
             'avatar' => ['sometimes', 'nullable', 'string', 'max:500'],
-            'status' => ['sometimes', 'nullable', 'string', 'max:50'],
+            'status' => ['sometimes', 'string', Rule::in(['active', 'inactive', 'blocked'])],
         ]);
 
         if (isset($data['name']) && empty($data['full_name'])) {
@@ -78,6 +81,10 @@ class UserController extends Controller
 
         $user->fill($data);
         $user->save();
+
+        if (array_key_exists('password', $data) || ! $user->isActive()) {
+            $this->tokens->revokeAllForUser($user);
+        }
 
         return response()->json([
             'success' => true,

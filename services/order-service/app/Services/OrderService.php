@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Cart;
 use App\Models\Order;
 use App\Models\OrderDiscount;
 use App\Models\OrderItem;
@@ -14,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class OrderService
 {
@@ -29,6 +31,8 @@ class OrderService
 
     public function __construct(
         private readonly CatalogPricingService $catalogPricingService,
+        private readonly OrderDiscountService $discountService,
+        private readonly InventoryService $inventory,
         private readonly OrderNotificationService $notifications,
         private readonly UserDirectoryService $users,
         private readonly OrderHistoryService $histories,
@@ -85,6 +89,8 @@ class OrderService
                 ]);
             }
 
+            $this->ensurePaymentAllowsProcessing($order);
+
             $assignedStaffId = (int) ($order->getAttribute('assigned_staff_id') ?? 0);
 
             if ($assignedStaffId > 0 && $assignedStaffId !== (int) $actor['id']) {
@@ -96,6 +102,7 @@ class OrderService
             $this->setOrderColumn($order, 'assigned_staff_name', $actor['name']);
             $this->setOrderColumn($order, 'assigned_at', now());
             $this->setOrderColumn($order, 'processing_note', $note);
+            $this->commitInventory($order);
             $order->status = Order::STATUS_PROCESSING;
             $order->save();
 
@@ -162,10 +169,12 @@ class OrderService
             );
 
             if ($currentStatus === Order::STATUS_PENDING && $status === Order::STATUS_PROCESSING && $actorProfile) {
+                $this->ensurePaymentAllowsProcessing($order);
                 $this->setOrderColumn($order, 'assigned_staff_id', $actorProfile['id']);
                 $this->setOrderColumn($order, 'assigned_staff_name', $actorProfile['name']);
                 $this->setOrderColumn($order, 'assigned_at', now());
                 $this->setOrderColumn($order, 'processing_note', $note);
+                $this->commitInventory($order);
             }
 
             $order->status = $status;
@@ -193,57 +202,37 @@ class OrderService
     public function updatePaymentStatus(int $orderId, array $data): ?Order
     {
         return DB::connection('bstore_order')->transaction(function () use ($orderId, $data) {
-            $order = Order::query()->find($orderId);
+            $order = Order::query()->lockForUpdate()->find($orderId);
 
             if (! $order) {
                 return null;
             }
 
-            $oldStatus = (string) $order->status;
-            $order->payment_status = $data['payment_status'];
+            $oldPaymentStatus = strtolower((string) $order->payment_status);
+            $newPaymentStatus = strtolower((string) $data['payment_status']);
+            $this->ensurePaymentTransition($oldPaymentStatus, $newPaymentStatus);
 
-            if (array_key_exists('status', $data) && $data['status'] !== null) {
-                $newStatus = $this->normalizeStatus((string) $data['status']);
-
-                if (! in_array($newStatus, Order::WORKFLOW_STATUSES, true)) {
-                    throw ValidationException::withMessages([
-                        'status' => ['Trang thai don hang khong nam trong luong xu ly'],
-                    ]);
-                }
-
-                if (
-                    $this->normalizeStatus((string) $order->status) !== $newStatus
-                    && ! $this->isNextWorkflowStatus($this->normalizeStatus((string) $order->status), $newStatus)
-                ) {
-                    throw ValidationException::withMessages([
-                        'status' => ['Khong duoc chuyen trang thai don hang nhay buoc hoac quay lui'],
-                    ]);
-                }
-
-                $order->status = $newStatus;
+            if ($newPaymentStatus === 'paid') {
+                $this->commitInventory($order);
             }
 
-            if (Schema::connection('bstore_order')->hasColumn('orders', 'payment_method') && array_key_exists('payment_method', $data)) {
-                $order->payment_method = $data['payment_method'];
-            }
+            $order->payment_status = $newPaymentStatus;
 
-            if (Schema::connection('bstore_order')->hasColumn('orders', 'paid_at') && array_key_exists('paid_at', $data)) {
-                $order->setAttribute('paid_at', $data['paid_at']);
+            if (Schema::connection('bstore_order')->hasColumn('orders', 'paid_at') && $newPaymentStatus === 'paid') {
+                $order->setAttribute('paid_at', $data['paid_at'] ?? $order->getAttribute('paid_at') ?? now());
             }
 
             $order->save();
 
-            if ($oldStatus !== (string) $order->status) {
+            if ($oldPaymentStatus !== $newPaymentStatus) {
                 $this->histories->record(
                     (int) $order->id,
                     'payment_status_updated',
-                    $oldStatus,
+                    (string) $order->status,
                     (string) $order->status,
                     null,
-                    'Internal payment status update',
+                    "Payment: {$oldPaymentStatus} -> {$newPaymentStatus}",
                 );
-
-                $this->notifications->sendStatusUpdated($order);
             }
 
             return $order->fresh() ?? $order;
@@ -271,6 +260,39 @@ class OrderService
         return Order::with('items')
             ->where('user_id', $userId)
             ->find($orderId);
+    }
+
+    public function paymentContext(int $orderId, ?int $customerId = null): ?array
+    {
+        $order = Order::query()->find($orderId);
+
+        if (! $order || ($customerId !== null && (int) $order->user_id !== $customerId)) {
+            return null;
+        }
+
+        $cartId = $order->getAttribute('cart_id');
+
+        if ($cartId === null && $this->orderTableExists('carts')) {
+            $cartId = Cart::query()
+                ->where('user_id', $order->user_id)
+                ->where(function ($query): void {
+                    $query->whereNull('status')->orWhere('status', 'active');
+                })
+                ->orderByDesc('id')
+                ->value('id');
+        }
+
+        return [
+            'order_id' => (int) $order->id,
+            'customer_id' => (int) $order->user_id,
+            'user_id' => (int) $order->user_id,
+            'final_amount' => (float) $order->final_amount,
+            'payment_method' => (string) $order->getAttribute('payment_method'),
+            'payment_status' => (string) $order->payment_status,
+            'order_status' => (string) $order->status,
+            'status' => (string) $order->status,
+            'cart_id' => $cartId !== null ? (int) $cartId : null,
+        ];
     }
 
     public function requestCancel(int $customerId, int $orderId, string $reason): ?Order
@@ -338,6 +360,7 @@ class OrderService
             $this->ensureCanHandleOrder($order, $actor, allowUnassignedStaff: true);
 
             $oldStatus = (string) $order->status;
+            $this->reverseInventoryForCancellation($order);
             $order->status = Order::STATUS_CANCELLED;
             $order->save();
 
@@ -432,48 +455,72 @@ class OrderService
 
     public function create(array $data): Order
     {
-        $order = DB::connection('bstore_order')->transaction(function () use ($data) {
-            $items = $this->catalogPricingService->applyCurrentPrices($data['items'] ?? []);
-            $discounts = $data['discounts'] ?? [];
-            $hasItems = $items !== [];
-            $hasDiscounts = $discounts !== [];
+        $items = $this->catalogPricingService->resolveOrderItems($data['items'] ?? []);
+        $requestedDiscounts = $data['discounts'] ?? [];
+        $orderCode = $this->orderCode();
+        $inventoryReference = $orderCode;
+        $this->inventory->reserve($inventoryReference, $items);
 
-            unset($data['items'], $data['discounts']);
+        try {
+            $order = DB::connection('bstore_order')->transaction(function () use ($data, $items, $requestedDiscounts, $orderCode, $inventoryReference) {
+                $itemTotal = (float) collect($items)->sum(fn (array $item): float => $this->subtotal($item));
+                $discounts = $this->discountService->resolve($requestedDiscounts, $itemTotal);
+                $discountTotal = (float) collect($discounts)->sum('discount_amount');
+                $shippingFee = $this->shippingFee($itemTotal);
+                $finalAmount = max($itemTotal - $discountTotal + $shippingFee, 0);
+                $paymentMethod = strtolower((string) ($data['payment_method'] ?? 'cod'));
 
-            $itemTotal = collect($items)->sum(fn (array $item) => $this->subtotal($item));
-            $discountTotal = collect($discounts)->sum(fn (array $discount) => (float) ($discount['discount_amount'] ?? 0));
-            $shippingFee = (float) ($data['shipping_fee'] ?? 0);
+                if ($paymentMethod === 'vnpay' && $finalAmount < 1000) {
+                    throw ValidationException::withMessages([
+                        'final_amount' => ['Don hang thanh toan VNPAY phai co tong tien lon hon hoac bang 1000'],
+                    ]);
+                }
 
-            $data['order_code'] = $data['order_code'] ?? $this->orderCode();
-            $data['total_amount'] = $hasItems ? $itemTotal : ($data['total_amount'] ?? $itemTotal);
-            $data['discount_amount'] = $hasDiscounts ? $discountTotal : ($data['discount_amount'] ?? $discountTotal);
-            $data['final_amount'] = ($hasItems || $hasDiscounts)
-                ? max((float) $data['total_amount'] - (float) $data['discount_amount'] + $shippingFee, 0)
-                : ($data['final_amount'] ?? max((float) $data['total_amount'] - (float) $data['discount_amount'] + $shippingFee, 0));
+                $orderData = [
+                    'user_id' => (int) $data['user_id'],
+                    'cart_id' => $this->activeCartId((int) $data['user_id']),
+                    'order_code' => $orderCode,
+                    'receiver_name' => $data['receiver_name'],
+                    'receiver_phone' => $data['receiver_phone'],
+                    'receiver_email' => $data['receiver_email'] ?? null,
+                    'shipping_address' => $data['shipping_address'],
+                    'shipping_method' => $data['shipping_method'],
+                    'payment_method' => $paymentMethod,
+                    'total_amount' => $itemTotal,
+                    'discount_amount' => $discountTotal,
+                    'shipping_fee' => $shippingFee,
+                    'final_amount' => $finalAmount,
+                    'status' => Order::STATUS_PENDING,
+                    'payment_status' => 'unpaid',
+                    'cancel_reason' => null,
+                    'note' => $data['note'] ?? null,
+                    'inventory_reference' => $inventoryReference,
+                    'inventory_state' => Order::INVENTORY_RESERVED,
+                ];
+                $order = Order::create($this->payloadForTable($orderData, 'orders'));
 
-            if (strtolower((string) ($data['payment_method'] ?? '')) === 'vnpay' && (float) $data['final_amount'] < 1000) {
-                throw ValidationException::withMessages([
-                    'final_amount' => ['Don hang thanh toan VNPAY phai co tong tien lon hon hoac bang 1000'],
-                ]);
+                foreach ($items as $item) {
+                    $item['order_id'] = $order->id;
+                    $item['subtotal'] = $this->subtotal($item);
+                    OrderItem::create($this->payloadForTable($item, 'order_items'));
+                }
+
+                foreach ($discounts as $discount) {
+                    $discount['order_id'] = $order->id;
+                    OrderDiscount::create($discount);
+                }
+
+                return $order->fresh(['items', 'discounts']);
+            });
+        } catch (Throwable $exception) {
+            try {
+                $this->inventory->release($inventoryReference);
+            } catch (Throwable $compensationException) {
+                report($compensationException);
             }
 
-            $order = Order::create($this->payloadForTable($data, 'orders'));
-
-            foreach ($items as $item) {
-                $item['order_id'] = $order->id;
-                $item['subtotal'] = $this->subtotal($item);
-
-                OrderItem::create($this->payloadForTable($item, 'order_items'));
-            }
-
-            foreach ($discounts as $discount) {
-                $discount['order_id'] = $order->id;
-
-                OrderDiscount::create($discount);
-            }
-
-            return $order->fresh(['items', 'discounts']);
-        });
+            throw $exception;
+        }
 
         $this->notifications->sendCreated($order);
 
@@ -540,6 +587,8 @@ class OrderService
             'receiver_email' => $order->receiver_email,
             'shipping_address' => $order->shipping_address,
             'shipping_method' => $order->shipping_method,
+            'shipping_fee' => $order->getAttribute('shipping_fee'),
+            'payment_method' => $order->getAttribute('payment_method'),
             'total_amount' => $order->total_amount,
             'discount_amount' => $order->discount_amount,
             'final_amount' => $order->final_amount,
@@ -554,6 +603,7 @@ class OrderService
             'cancel_reason' => $order->getAttribute('cancel_reason'),
             'note' => $order->note,
             'created_at' => $order->created_at,
+            'inventory_state' => $order->getAttribute('inventory_state'),
         ];
 
         if ($withItems) {
@@ -616,6 +666,126 @@ class OrderService
         if ($assignedStaffId === 0 && ! $allowUnassignedStaff) {
             throw new AuthorizationException('Nhan vien can nhan xu ly don hang truoc khi thao tac');
         }
+    }
+
+    private function ensurePaymentAllowsProcessing(Order $order): void
+    {
+        if ($this->isCashOnDelivery($order)) {
+            return;
+        }
+
+        if (strtolower((string) $order->payment_status) !== 'paid') {
+            throw ValidationException::withMessages([
+                'payment_status' => ['Don thanh toan online phai duoc thanh toan truoc khi xu ly'],
+            ]);
+        }
+    }
+
+    private function ensurePaymentTransition(string $current, string $next): void
+    {
+        if ($current === $next) {
+            return;
+        }
+
+        $allowed = [
+            'unpaid' => ['pending', 'paid', 'failed'],
+            'pending' => ['paid', 'failed'],
+            'failed' => ['pending', 'paid'],
+            'paid' => ['refunded'],
+            'refunded' => [],
+        ];
+
+        if (! in_array($next, $allowed[$current] ?? [], true)) {
+            throw ValidationException::withMessages([
+                'payment_status' => ["Khong the chuyen trang thai thanh toan tu {$current} sang {$next}"],
+            ]);
+        }
+    }
+
+    private function commitInventory(Order $order): void
+    {
+        if (! $this->orderColumnExists('inventory_reference') || ! $this->orderColumnExists('inventory_state')) {
+            return;
+        }
+
+        $reference = (string) $order->getAttribute('inventory_reference');
+        $state = (string) $order->getAttribute('inventory_state');
+
+        if ($reference === '' || $state === Order::INVENTORY_COMMITTED) {
+            return;
+        }
+
+        if ($state !== Order::INVENTORY_RESERVED) {
+            throw ValidationException::withMessages([
+                'inventory' => ["Khong the commit ton kho o trang thai {$state}"],
+            ]);
+        }
+
+        $this->inventory->commit($reference);
+        $order->setAttribute('inventory_state', Order::INVENTORY_COMMITTED);
+        $this->setOrderColumn($order, 'inventory_updated_at', now());
+    }
+
+    private function reverseInventoryForCancellation(Order $order): void
+    {
+        if (! $this->orderColumnExists('inventory_reference') || ! $this->orderColumnExists('inventory_state')) {
+            return;
+        }
+
+        $reference = (string) $order->getAttribute('inventory_reference');
+        $state = (string) $order->getAttribute('inventory_state');
+
+        if ($reference === '' || in_array($state, [Order::INVENTORY_RELEASED, Order::INVENTORY_RESTORED], true)) {
+            return;
+        }
+
+        if ($state === Order::INVENTORY_RESERVED) {
+            $this->inventory->release($reference);
+            $order->setAttribute('inventory_state', Order::INVENTORY_RELEASED);
+        } elseif ($state === Order::INVENTORY_COMMITTED) {
+            $this->inventory->restore($reference);
+            $order->setAttribute('inventory_state', Order::INVENTORY_RESTORED);
+        } else {
+            throw ValidationException::withMessages([
+                'inventory' => ["Khong the hoan ton kho o trang thai {$state}"],
+            ]);
+        }
+
+        $this->setOrderColumn($order, 'inventory_updated_at', now());
+    }
+
+    private function isCashOnDelivery(Order $order): bool
+    {
+        return in_array(strtolower((string) $order->getAttribute('payment_method')), [
+            'cod',
+            'cash',
+            'cash_on_delivery',
+        ], true);
+    }
+
+    private function shippingFee(float $subtotal): float
+    {
+        $flatFee = max((float) config('order.shipping.flat_fee', 30000), 0);
+        $freeThreshold = max((float) config('order.shipping.free_threshold', 20000000), 0);
+
+        return $freeThreshold > 0 && $subtotal >= $freeThreshold ? 0.0 : $flatFee;
+    }
+
+    private function activeCartId(int $userId): ?int
+    {
+        if (! $this->orderTableExists('carts')) {
+            return null;
+        }
+
+        $id = Cart::query()
+            ->where('user_id', $userId)
+            ->where(function ($query): void {
+                $query->whereNull('status')->orWhere('status', 'active');
+            })
+            ->orderByDesc('id')
+            ->value('id');
+
+        return $id !== null ? (int) $id : null;
     }
 
     private function setOrderColumn(Order $order, string $column, mixed $value): void
@@ -793,7 +963,7 @@ class OrderService
             }
 
             return $snapshots;
-        } catch (\Throwable $exception) {
+        } catch (Throwable $exception) {
             report($exception);
 
             return collect();
@@ -826,7 +996,7 @@ class OrderService
             return $this->tableColumns[$table] = Schema::connection('bstore_order')->hasTable($table)
                 ? Schema::connection('bstore_order')->getColumnListing($table)
                 : [];
-        } catch (\Throwable $exception) {
+        } catch (Throwable $exception) {
             report($exception);
 
             return $this->tableColumns[$table] = [];
@@ -837,7 +1007,7 @@ class OrderService
     {
         try {
             return Schema::connection('bstore_order')->hasTable($table);
-        } catch (\Throwable $exception) {
+        } catch (Throwable $exception) {
             report($exception);
 
             return false;
@@ -852,7 +1022,7 @@ class OrderService
 
         try {
             return $this->catalogTableExists[$table] = Schema::connection('bstore_catalog')->hasTable($table);
-        } catch (\Throwable $exception) {
+        } catch (Throwable $exception) {
             report($exception);
 
             return $this->catalogTableExists[$table] = false;

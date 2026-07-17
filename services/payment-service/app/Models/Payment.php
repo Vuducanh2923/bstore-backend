@@ -37,4 +37,9 @@ class Payment extends Model
     {
         return $this->hasMany(Invoice::class);
     }
+
+    public function refunds()
+    {
+        return $this->hasMany(PaymentRefund::class);
+    }
 }

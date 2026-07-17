@@ -18,7 +18,6 @@ return [
     'tags' => [
         ['name' => 'Documentation', 'description' => 'OpenAPI document endpoint.'],
         ['name' => 'Payments', 'description' => 'Payment-specific endpoints.'],
-        ['name' => 'Resources', 'description' => 'Generic CRUD endpoints for supported payment resources.'],
     ],
     'paths' => [
         '/docs/openapi.json' => [
@@ -134,77 +133,6 @@ return [
                 ],
             ],
         ],
-        '/{resource}' => [
-            'parameters' => [
-                ['$ref' => '#/components/parameters/PaymentResource'],
-            ],
-            'get' => [
-                'tags' => ['Resources'],
-                'summary' => 'List records for a supported resource',
-                'operationId' => 'listPaymentResource',
-                'responses' => [
-                    '200' => ['$ref' => '#/components/responses/ResourceCollection'],
-                    '404' => ['$ref' => '#/components/responses/UnsupportedResource'],
-                ],
-            ],
-            'post' => [
-                'tags' => ['Resources'],
-                'summary' => 'Create a record for a supported resource',
-                'operationId' => 'createPaymentResource',
-                'requestBody' => ['$ref' => '#/components/requestBodies/GenericResource'],
-                'responses' => [
-                    '201' => ['$ref' => '#/components/responses/ResourceRecord'],
-                    '404' => ['$ref' => '#/components/responses/UnsupportedResource'],
-                    '422' => ['$ref' => '#/components/responses/ValidationError'],
-                ],
-            ],
-        ],
-        '/{resource}/{id}' => [
-            'parameters' => [
-                ['$ref' => '#/components/parameters/PaymentResource'],
-                ['$ref' => '#/components/parameters/Id'],
-            ],
-            'get' => [
-                'tags' => ['Resources'],
-                'summary' => 'Show a record for a supported resource',
-                'operationId' => 'showPaymentResource',
-                'responses' => [
-                    '200' => ['$ref' => '#/components/responses/ResourceRecord'],
-                    '404' => ['$ref' => '#/components/responses/NotFound'],
-                ],
-            ],
-            'put' => [
-                'tags' => ['Resources'],
-                'summary' => 'Replace a record for a supported resource',
-                'operationId' => 'replacePaymentResource',
-                'requestBody' => ['$ref' => '#/components/requestBodies/GenericResource'],
-                'responses' => [
-                    '200' => ['$ref' => '#/components/responses/ResourceRecord'],
-                    '404' => ['$ref' => '#/components/responses/NotFound'],
-                    '422' => ['$ref' => '#/components/responses/ValidationError'],
-                ],
-            ],
-            'patch' => [
-                'tags' => ['Resources'],
-                'summary' => 'Partially update a record for a supported resource',
-                'operationId' => 'updatePaymentResource',
-                'requestBody' => ['$ref' => '#/components/requestBodies/GenericResource'],
-                'responses' => [
-                    '200' => ['$ref' => '#/components/responses/ResourceRecord'],
-                    '404' => ['$ref' => '#/components/responses/NotFound'],
-                    '422' => ['$ref' => '#/components/responses/ValidationError'],
-                ],
-            ],
-            'delete' => [
-                'tags' => ['Resources'],
-                'summary' => 'Delete a record for a supported resource',
-                'operationId' => 'deletePaymentResource',
-                'responses' => [
-                    '200' => ['$ref' => '#/components/responses/DeleteResponse'],
-                    '404' => ['$ref' => '#/components/responses/NotFound'],
-                ],
-            ],
-        ],
     ],
     'components' => [
         'parameters' => [
@@ -214,30 +142,8 @@ return [
                 'required' => true,
                 'schema' => ['type' => 'integer', 'minimum' => 1],
             ],
-            'PaymentResource' => [
-                'name' => 'resource',
-                'in' => 'path',
-                'required' => true,
-                'schema' => [
-                    'type' => 'string',
-                    'enum' => [
-                        'payments',
-                        'payment-transactions',
-                        'payment_transactions',
-                        'invoices',
-                    ],
-                ],
-            ],
         ],
         'requestBodies' => [
-            'GenericResource' => [
-                'required' => false,
-                'content' => [
-                    'application/json' => [
-                        'schema' => ['$ref' => '#/components/schemas/GenericResourceRequest'],
-                    ],
-                ],
-            ],
         ],
         'responses' => [
             'OpenApiDocument' => [
@@ -245,22 +151,6 @@ return [
                 'content' => [
                     'application/json' => [
                         'schema' => ['type' => 'object', 'additionalProperties' => true],
-                    ],
-                ],
-            ],
-            'ResourceCollection' => [
-                'description' => 'Records returned',
-                'content' => [
-                    'application/json' => [
-                        'schema' => ['$ref' => '#/components/schemas/ResourceCollectionResponse'],
-                    ],
-                ],
-            ],
-            'ResourceRecord' => [
-                'description' => 'Record returned',
-                'content' => [
-                    'application/json' => [
-                        'schema' => ['$ref' => '#/components/schemas/ResourceRecordResponse'],
                     ],
                 ],
             ],
@@ -280,14 +170,6 @@ return [
                     ],
                 ],
             ],
-            'UnsupportedResource' => [
-                'description' => 'Resource is not supported',
-                'content' => [
-                    'application/json' => [
-                        'schema' => ['$ref' => '#/components/schemas/ErrorResponse'],
-                    ],
-                ],
-            ],
             'ValidationError' => [
                 'description' => 'Validation error',
                 'content' => [
@@ -300,19 +182,9 @@ return [
         'schemas' => [
             'PaymentCreateRequest' => [
                 'type' => 'object',
-                'required' => ['order_id', 'payment_method', 'amount'],
+                'required' => ['order_id'],
                 'properties' => [
                     'order_id' => ['type' => 'integer', 'example' => 1],
-                    'payment_method' => ['type' => 'string', 'maxLength' => 50, 'example' => 'cod'],
-                    'payment_provider' => ['type' => 'string', 'nullable' => true, 'maxLength' => 50, 'example' => 'vnpay'],
-                    'transaction_code' => ['type' => 'string', 'nullable' => true, 'maxLength' => 191],
-                    'amount' => ['type' => 'number', 'format' => 'float', 'minimum' => 0, 'example' => 29990000],
-                    'status' => ['type' => 'string', 'nullable' => true, 'maxLength' => 20, 'example' => 'pending'],
-                    'paid_at' => ['type' => 'string', 'format' => 'date-time', 'nullable' => true],
-                    'transactions' => [
-                        'type' => 'array',
-                        'items' => ['$ref' => '#/components/schemas/PaymentTransactionInput'],
-                    ],
                 ],
             ],
             'PaymentTransactionInput' => [
@@ -328,14 +200,13 @@ return [
             ],
             'VnpayCreateRequest' => [
                 'type' => 'object',
-                'required' => ['order_id', 'amount'],
+                'required' => ['order_id'],
                 'properties' => [
                     'order_id' => [
                         'type' => 'integer',
                         'description' => 'Order ID do Order Service da tao.',
                         'example' => 123,
                     ],
-                    'amount' => ['type' => 'integer', 'minimum' => 1000, 'example' => 90000],
                     'order_info' => ['type' => 'string', 'nullable' => true, 'maxLength' => 255, 'example' => 'Thanh toan don hang 123'],
                 ],
             ],
@@ -352,9 +223,6 @@ return [
                             'order_id' => ['type' => 'integer'],
                             'amount' => ['type' => 'string', 'example' => '90000.00'],
                             'txn_ref' => ['type' => 'string'],
-                            'return_url' => ['type' => 'string', 'format' => 'uri'],
-                            'ipn_url' => ['type' => 'string', 'format' => 'uri'],
-                            'vnpay_params' => ['type' => 'object', 'additionalProperties' => true],
                         ],
                     ],
                 ],
@@ -382,11 +250,6 @@ return [
                     'RspCode' => ['type' => 'string', 'example' => '00'],
                     'Message' => ['type' => 'string', 'example' => 'Confirm Success'],
                 ],
-            ],
-            'GenericResourceRequest' => [
-                'type' => 'object',
-                'description' => 'Payload is filtered by the target model fillable fields. Supported resources include payments, payment transactions, and invoices.',
-                'additionalProperties' => true,
             ],
             'PaymentTransaction' => [
                 'type' => 'object',

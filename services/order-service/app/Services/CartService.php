@@ -7,6 +7,7 @@ use App\Models\CartItem;
 use App\Models\Order;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 
 class CartService
 {
@@ -36,6 +37,97 @@ class CartService
         return Cart::with('items')->find($id);
     }
 
+    public function forUser(int $userId)
+    {
+        return Cart::with('items')
+            ->where('user_id', $userId)
+            ->orderByDesc('id')
+            ->get();
+    }
+
+    public function findForUser(int $userId, int $id): ?Cart
+    {
+        return Cart::with('items')
+            ->where('user_id', $userId)
+            ->find($id);
+    }
+
+    public function addItem(int $userId, array $data): CartItem
+    {
+        return DB::connection('bstore_order')->transaction(function () use ($userId, $data) {
+            $cart = Cart::query()
+                ->where('user_id', $userId)
+                ->where(function ($query): void {
+                    $query->whereNull('status')->orWhere('status', 'active');
+                })
+                ->lockForUpdate()
+                ->find((int) $data['cart_id']);
+
+            if (! $cart) {
+                throw ValidationException::withMessages([
+                    'cart_id' => ['Khong tim thay gio hang dang hoat dong cua khach hang'],
+                ]);
+            }
+
+            $snapshot = $this->catalogPricingService->resolveOrderItems([[
+                'product_variant_id' => (int) $data['product_variant_id'],
+                'quantity' => (int) $data['quantity'],
+            ]])[0];
+            $item = CartItem::query()
+                ->where('cart_id', $cart->id)
+                ->where('product_variant_id', $snapshot['product_variant_id'])
+                ->lockForUpdate()
+                ->first();
+
+            if ($item) {
+                $snapshot['quantity'] += (int) $item->quantity;
+                $item->fill($snapshot);
+                $item->subtotal = $this->subtotal($snapshot);
+                $item->save();
+
+                return $item->fresh() ?? $item;
+            }
+
+            $snapshot['cart_id'] = $cart->id;
+            $snapshot['subtotal'] = $this->subtotal($snapshot);
+
+            return CartItem::create($snapshot);
+        });
+    }
+
+    public function updateItem(int $userId, int $itemId, int $quantity): ?CartItem
+    {
+        return DB::connection('bstore_order')->transaction(function () use ($userId, $itemId, $quantity) {
+            $item = CartItem::query()
+                ->whereHas('cart', fn ($query) => $query->where('user_id', $userId))
+                ->lockForUpdate()
+                ->find($itemId);
+
+            if (! $item) {
+                return null;
+            }
+
+            $snapshot = $this->catalogPricingService->resolveOrderItems([[
+                'product_variant_id' => (int) $item->product_variant_id,
+                'quantity' => $quantity,
+            ]])[0];
+            $item->fill($snapshot);
+            $item->subtotal = $this->subtotal($snapshot);
+            $item->save();
+
+            return $item->fresh() ?? $item;
+        });
+    }
+
+    public function deleteItem(int $userId, int $itemId): bool
+    {
+        $item = CartItem::query()
+            ->whereHas('cart', fn ($query) => $query->where('user_id', $userId))
+            ->find($itemId);
+
+        return $item ? (bool) $item->delete() : false;
+    }
+
     public function clearForPaidOrder(int $orderId): array
     {
         return DB::connection('bstore_order')->transaction(function () use ($orderId) {
@@ -49,6 +141,7 @@ class CartService
                 return [
                     'order_found' => false,
                     'cleared' => false,
+                    'paid' => false,
                     'order_id' => $orderId,
                     'user_id' => null,
                     'cart_ids' => [],
@@ -56,12 +149,33 @@ class CartService
                 ];
             }
 
+            if (strtolower((string) $order->payment_status) !== 'paid') {
+                Log::warning('order.cart_clear_after_payment.not_paid', [
+                    'order_id' => $orderId,
+                    'payment_status' => $order->payment_status,
+                ]);
+
+                return [
+                    'order_found' => true,
+                    'cleared' => false,
+                    'paid' => false,
+                    'order_id' => (int) $order->id,
+                    'user_id' => (int) $order->user_id,
+                    'cart_ids' => [],
+                    'deleted_items' => 0,
+                ];
+            }
+
+            $orderCartId = $order->getAttribute('cart_id');
             $cartIds = Cart::query()
                 ->where('user_id', $order->user_id)
-                ->where(function ($query): void {
-                    $query->whereNull('status')
-                        ->orWhere('status', 'active');
-                })
+                ->when(
+                    $orderCartId !== null,
+                    fn ($query) => $query->whereKey((int) $orderCartId),
+                    fn ($query) => $query->where(function ($query): void {
+                        $query->whereNull('status')->orWhere('status', 'active');
+                    }),
+                )
                 ->pluck('id')
                 ->map(fn ($id): int => (int) $id)
                 ->values();
@@ -73,6 +187,7 @@ class CartService
             $result = [
                 'order_found' => true,
                 'cleared' => true,
+                'paid' => true,
                 'order_id' => (int) $order->id,
                 'user_id' => (int) $order->user_id,
                 'cart_ids' => $cartIds->all(),

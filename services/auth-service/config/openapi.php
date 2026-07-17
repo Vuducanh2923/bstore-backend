@@ -19,7 +19,7 @@ return [
         ['name' => 'Documentation', 'description' => 'OpenAPI document endpoint.'],
         ['name' => 'Auth', 'description' => 'Registration and login.'],
         ['name' => 'Users', 'description' => 'User-specific endpoints.'],
-        ['name' => 'Resources', 'description' => 'Generic CRUD endpoints for supported auth resources.'],
+        ['name' => 'Internal', 'description' => 'Service-to-service endpoints.'],
     ],
     'paths' => [
         '/docs/openapi.json' => [
@@ -88,8 +88,9 @@ return [
         '/users' => [
             'get' => [
                 'tags' => ['Users'],
-                'summary' => 'List users with roles',
+                'summary' => 'List users with roles (Admin only)',
                 'operationId' => 'listUsers',
+                'security' => [['bearerAuth' => []]],
                 'responses' => [
                     '200' => [
                         'description' => 'User list',
@@ -108,8 +109,9 @@ return [
             ],
             'put' => [
                 'tags' => ['Users'],
-                'summary' => 'Update a user',
+                'summary' => 'Update a user (Admin only)',
                 'operationId' => 'replaceUser',
+                'security' => [['bearerAuth' => []]],
                 'requestBody' => ['$ref' => '#/components/requestBodies/UserUpdate'],
                 'responses' => [
                     '200' => [
@@ -126,8 +128,9 @@ return [
             ],
             'patch' => [
                 'tags' => ['Users'],
-                'summary' => 'Partially update a user',
+                'summary' => 'Partially update a user (Admin only)',
                 'operationId' => 'updateUser',
+                'security' => [['bearerAuth' => []]],
                 'requestBody' => ['$ref' => '#/components/requestBodies/UserUpdate'],
                 'responses' => [
                     '200' => [
@@ -143,94 +146,93 @@ return [
                 ],
             ],
         ],
-        '/{resource}' => [
-            'parameters' => [
-                ['$ref' => '#/components/parameters/AuthResource'],
-            ],
+        '/roles' => [
             'get' => [
-                'tags' => ['Resources'],
-                'summary' => 'List records for a supported resource',
-                'operationId' => 'listAuthResource',
+                'tags' => ['Users'],
+                'summary' => 'List roles (Admin only)',
+                'operationId' => 'listRoles',
+                'security' => [['bearerAuth' => []]],
                 'responses' => [
                     '200' => ['$ref' => '#/components/responses/ResourceCollection'],
-                    '404' => ['$ref' => '#/components/responses/UnsupportedResource'],
+                    '401' => ['$ref' => '#/components/responses/Unauthorized'],
                 ],
             ],
+        ],
+        '/auth/refresh' => [
             'post' => [
-                'tags' => ['Resources'],
-                'summary' => 'Create a record for a supported resource',
-                'operationId' => 'createAuthResource',
-                'requestBody' => ['$ref' => '#/components/requestBodies/GenericResource'],
+                'tags' => ['Auth'],
+                'summary' => 'Rotate a refresh token and issue a new token pair',
+                'operationId' => 'refreshAuthToken',
+                'requestBody' => ['$ref' => '#/components/requestBodies/RefreshToken'],
                 'responses' => [
-                    '201' => ['$ref' => '#/components/responses/ResourceRecord'],
-                    '404' => ['$ref' => '#/components/responses/UnsupportedResource'],
+                    '200' => ['$ref' => '#/components/responses/ResourceRecord'],
+                    '401' => ['$ref' => '#/components/responses/Unauthorized'],
                     '422' => ['$ref' => '#/components/responses/ValidationError'],
                 ],
             ],
         ],
-        '/{resource}/{id}' => [
+        '/auth/logout' => [
+            'post' => [
+                'tags' => ['Auth'],
+                'summary' => 'Revoke the current session',
+                'operationId' => 'logoutUser',
+                'security' => [['bearerAuth' => []]],
+                'responses' => [
+                    '200' => ['$ref' => '#/components/responses/ResourceRecord'],
+                    '401' => ['$ref' => '#/components/responses/Unauthorized'],
+                ],
+            ],
+        ],
+        '/internal/auth/introspect' => [
+            'post' => [
+                'tags' => ['Internal'],
+                'summary' => 'Validate an access token and its server-side session',
+                'operationId' => 'introspectAuthToken',
+                'security' => [['internalService' => []]],
+                'requestBody' => ['$ref' => '#/components/requestBodies/IntrospectToken'],
+                'responses' => [
+                    '200' => ['$ref' => '#/components/responses/ResourceRecord'],
+                    '401' => ['$ref' => '#/components/responses/Unauthorized'],
+                    '422' => ['$ref' => '#/components/responses/ValidationError'],
+                ],
+            ],
+        ],
+        '/internal/users/{id}' => [
             'parameters' => [
-                ['$ref' => '#/components/parameters/AuthResource'],
                 ['$ref' => '#/components/parameters/Id'],
             ],
             'get' => [
-                'tags' => ['Resources'],
-                'summary' => 'Show a record for a supported resource',
-                'operationId' => 'showAuthResource',
+                'tags' => ['Internal'],
+                'summary' => 'Get the minimal internal user profile',
+                'operationId' => 'getInternalUser',
+                'security' => [['internalService' => []]],
                 'responses' => [
                     '200' => ['$ref' => '#/components/responses/ResourceRecord'],
-                    '404' => ['$ref' => '#/components/responses/NotFound'],
-                ],
-            ],
-            'put' => [
-                'tags' => ['Resources'],
-                'summary' => 'Replace a record for a supported resource',
-                'operationId' => 'replaceAuthResource',
-                'requestBody' => ['$ref' => '#/components/requestBodies/GenericResource'],
-                'responses' => [
-                    '200' => ['$ref' => '#/components/responses/ResourceRecord'],
-                    '404' => ['$ref' => '#/components/responses/NotFound'],
-                    '422' => ['$ref' => '#/components/responses/ValidationError'],
-                ],
-            ],
-            'patch' => [
-                'tags' => ['Resources'],
-                'summary' => 'Partially update a record for a supported resource',
-                'operationId' => 'updateAuthResource',
-                'requestBody' => ['$ref' => '#/components/requestBodies/GenericResource'],
-                'responses' => [
-                    '200' => ['$ref' => '#/components/responses/ResourceRecord'],
-                    '404' => ['$ref' => '#/components/responses/NotFound'],
-                    '422' => ['$ref' => '#/components/responses/ValidationError'],
-                ],
-            ],
-            'delete' => [
-                'tags' => ['Resources'],
-                'summary' => 'Delete a record for a supported resource',
-                'operationId' => 'deleteAuthResource',
-                'responses' => [
-                    '200' => ['$ref' => '#/components/responses/DeleteResponse'],
+                    '401' => ['$ref' => '#/components/responses/Unauthorized'],
                     '404' => ['$ref' => '#/components/responses/NotFound'],
                 ],
             ],
         ],
     ],
     'components' => [
+        'securitySchemes' => [
+            'bearerAuth' => [
+                'type' => 'http',
+                'scheme' => 'bearer',
+                'bearerFormat' => 'JWT',
+            ],
+            'internalService' => [
+                'type' => 'apiKey',
+                'in' => 'header',
+                'name' => 'X-Internal-Service-Token',
+            ],
+        ],
         'parameters' => [
             'Id' => [
                 'name' => 'id',
                 'in' => 'path',
                 'required' => true,
                 'schema' => ['type' => 'integer', 'minimum' => 1],
-            ],
-            'AuthResource' => [
-                'name' => 'resource',
-                'in' => 'path',
-                'required' => true,
-                'schema' => [
-                    'type' => 'string',
-                    'enum' => ['roles', 'users'],
-                ],
             ],
         ],
         'requestBodies' => [
@@ -242,11 +244,19 @@ return [
                     ],
                 ],
             ],
-            'GenericResource' => [
-                'required' => false,
+            'RefreshToken' => [
+                'required' => true,
                 'content' => [
                     'application/json' => [
-                        'schema' => ['$ref' => '#/components/schemas/GenericResourceRequest'],
+                        'schema' => ['$ref' => '#/components/schemas/RefreshTokenRequest'],
+                    ],
+                ],
+            ],
+            'IntrospectToken' => [
+                'required' => true,
+                'content' => [
+                    'application/json' => [
+                        'schema' => ['$ref' => '#/components/schemas/IntrospectTokenRequest'],
                     ],
                 ],
             ],
@@ -326,14 +336,12 @@ return [
                     ['required' => ['name']],
                 ],
                 'properties' => [
-                    'role_id' => ['type' => 'integer', 'nullable' => true, 'example' => 3],
                     'full_name' => ['type' => 'string', 'maxLength' => 100, 'example' => 'Nguyen Van A'],
                     'name' => ['type' => 'string', 'maxLength' => 100, 'description' => 'Alias accepted when full_name is omitted.'],
                     'email' => ['type' => 'string', 'format' => 'email', 'maxLength' => 191, 'example' => 'customer@example.com'],
                     'password' => ['type' => 'string', 'format' => 'password', 'minLength' => 6, 'maxLength' => 255],
                     'phone' => ['type' => 'string', 'nullable' => true, 'maxLength' => 20],
                     'avatar' => ['type' => 'string', 'nullable' => true, 'maxLength' => 255],
-                    'status' => ['type' => 'string', 'nullable' => true, 'maxLength' => 20, 'example' => 'active'],
                 ],
             ],
             'LoginRequest' => [
@@ -342,6 +350,20 @@ return [
                 'properties' => [
                     'email' => ['type' => 'string', 'format' => 'email', 'example' => 'customer@example.com'],
                     'password' => ['type' => 'string', 'format' => 'password'],
+                ],
+            ],
+            'RefreshTokenRequest' => [
+                'type' => 'object',
+                'required' => ['refresh_token'],
+                'properties' => [
+                    'refresh_token' => ['type' => 'string', 'minLength' => 64, 'maxLength' => 512],
+                ],
+            ],
+            'IntrospectTokenRequest' => [
+                'type' => 'object',
+                'required' => ['token'],
+                'properties' => [
+                    'token' => ['type' => 'string', 'maxLength' => 4096],
                 ],
             ],
             'UserUpdateRequest' => [
@@ -356,11 +378,6 @@ return [
                     'avatar' => ['type' => 'string', 'nullable' => true, 'maxLength' => 500],
                     'status' => ['type' => 'string', 'nullable' => true, 'maxLength' => 50],
                 ],
-            ],
-            'GenericResourceRequest' => [
-                'type' => 'object',
-                'description' => 'Payload is filtered by the target model fillable fields. roles accepts name and description; users accepts role_id, full_name/name, email, password, phone, avatar, and status.',
-                'additionalProperties' => true,
             ],
             'Role' => [
                 'type' => 'object',
@@ -381,6 +398,9 @@ return [
                     'avatar' => ['type' => 'string', 'nullable' => true],
                     'status' => ['type' => 'string', 'nullable' => true, 'example' => 'active'],
                     'role' => ['$ref' => '#/components/schemas/Role'],
+                    'token' => ['type' => 'string', 'description' => 'Short-lived access JWT.'],
+                    'refresh_token' => ['type' => 'string', 'description' => 'One-time rotating refresh token.'],
+                    'expires_in' => ['type' => 'integer', 'example' => 900],
                 ],
             ],
             'UserResponse' => [

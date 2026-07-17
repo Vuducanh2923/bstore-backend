@@ -5,6 +5,8 @@ return [
 
     'timeout' => (int) env('MICROSERVICE_TIMEOUT', 5),
 
+    'internal_token' => env('INTERNAL_SERVICE_TOKEN'),
+
     'services' => [
         'auth' => [
             'url' => env('AUTH_SERVICE_URL', 'http://127.0.0.1:8001'),

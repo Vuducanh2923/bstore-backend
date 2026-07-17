@@ -30,6 +30,7 @@ return new class extends Migration
 
         if (! Schema::hasTable('refund_requests')) {
             Schema::create('refund_requests', function (Blueprint $table) {
+                $table->engine = 'InnoDB';
                 $table->id();
                 $table->unsignedBigInteger('order_id')->index();
                 $table->unsignedBigInteger('customer_id')->index();
@@ -42,11 +43,14 @@ return new class extends Migration
                 $table->string('refund_transaction', 191)->nullable();
                 $table->text('admin_note')->nullable();
                 $table->timestamps();
+                $table->unique('order_id');
+                $table->foreign('order_id')->references('id')->on('orders')->cascadeOnDelete();
             });
         }
 
         if (! Schema::hasTable('complaints')) {
             Schema::create('complaints', function (Blueprint $table) {
+                $table->engine = 'InnoDB';
                 $table->id();
                 $table->unsignedBigInteger('order_id')->index();
                 $table->unsignedBigInteger('customer_id')->index();
@@ -59,11 +63,13 @@ return new class extends Migration
                 $table->text('reply')->nullable();
                 $table->timestamp('handled_at')->nullable();
                 $table->timestamps();
+                $table->foreign('order_id')->references('id')->on('orders')->cascadeOnDelete();
             });
         }
 
         if (! Schema::hasTable('order_histories')) {
             Schema::create('order_histories', function (Blueprint $table) {
+                $table->engine = 'InnoDB';
                 $table->id();
                 $table->unsignedBigInteger('order_id')->index();
                 $table->string('action', 50)->index();
@@ -73,11 +79,13 @@ return new class extends Migration
                 $table->string('staff_name', 191)->nullable();
                 $table->text('note')->nullable();
                 $table->timestamp('created_at')->nullable();
+                $table->foreign('order_id')->references('id')->on('orders')->cascadeOnDelete();
             });
         }
 
         if (! Schema::hasTable('notifications')) {
             Schema::create('notifications', function (Blueprint $table) {
+                $table->engine = 'InnoDB';
                 $table->id();
                 $table->unsignedBigInteger('user_id')->nullable()->index();
                 $table->unsignedBigInteger('order_id')->nullable()->index();
@@ -87,6 +95,7 @@ return new class extends Migration
                 $table->json('data')->nullable();
                 $table->timestamp('read_at')->nullable();
                 $table->timestamps();
+                $table->foreign('order_id')->references('id')->on('orders')->nullOnDelete();
             });
         }
     }

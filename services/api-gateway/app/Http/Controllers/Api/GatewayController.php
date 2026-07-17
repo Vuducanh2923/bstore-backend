@@ -10,11 +10,27 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 class GatewayController extends Controller
 {
+    private const PUBLIC_GET_PATH_PATTERNS = [
+        '#^products(?:/(?:sale|new|[0-9]+|[^/]+))?$#',
+        '#^categories$#',
+        '#^brands$#',
+        '#^banners(?:/(?:home|[0-9]+))?$#',
+        '#^home/banners$#',
+        '#^payments/vnpay/(?:return|ipn)$#',
+        '#^docs/openapi\.json$#',
+        '#^gateway/health$#',
+    ];
+
+    private const PUBLIC_POST_PATH_PATTERNS = [
+        '#^auth/(?:register|login|refresh|verify-register-otp|resend-register-otp|forgot-password|verify-forgot-password-otp|reset-password)$#',
+    ];
+
     private const AUTH_ADMIN_PATH_PATTERNS = [
         '#^admin/staff(?:/[0-9]+)?(?:/status)?$#',
         '#^admin/customers(?:/[0-9]+)?(?:/status)?$#',
@@ -23,16 +39,6 @@ class GatewayController extends Controller
 
     private const ORDER_ADMIN_PATH_PATTERNS = [
         '#^admin/orders(?:/[0-9]+)?(?:/(?:assign|status|cancel/(?:approve|reject)))?$#',
-    ];
-
-    private const INTERNAL_ORDER_PATH_PATTERNS = [
-        '#^internal/customers/[0-9]+/orders$#',
-        '#^internal/orders/[0-9]+/cart/clear$#',
-        '#^internal/orders/[0-9]+/payment-status$#',
-    ];
-
-    private const INTERNAL_PAYMENT_PATH_PATTERNS = [
-        '#^internal/orders/[0-9]+/(?:payment|invoice)$#',
     ];
 
     private const ROUTE_MAP = [
@@ -94,6 +100,37 @@ class GatewayController extends Controller
 
     public function forward(Request $request, string $path): Response|JsonResponse
     {
+        $normalizedPath = trim($path, '/');
+
+        if ($normalizedPath === 'internal' || str_starts_with($normalizedPath, 'internal/')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Not found',
+            ], 404);
+        }
+
+        $isPublic = $this->isPublicRequest($request, $normalizedPath);
+
+        Log::debug('gateway.request.resolved', [
+            'method' => $request->method(),
+            'path' => $normalizedPath,
+            'public' => $isPublic,
+            'has_authorization' => $request->hasHeader('Authorization'),
+        ]);
+
+        if (! $isPublic && $request->bearerToken() && ! $this->accessTokenIsActive($request->bearerToken())) {
+            Log::notice('gateway.auth.rejected', [
+                'method' => $request->method(),
+                'path' => $normalizedPath,
+                'reason' => 'inactive_or_invalid_access_token',
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Phien dang nhap khong con hieu luc',
+            ], 401);
+        }
+
         $serviceName = $this->resolveServiceName($path);
 
         if (! $serviceName) {
@@ -104,6 +141,13 @@ class GatewayController extends Controller
         }
 
         $targetUrl = $this->targetUrl($serviceName, $path);
+
+        Log::debug('gateway.request.forwarding', [
+            'method' => $request->method(),
+            'path' => $normalizedPath,
+            'service' => $serviceName,
+            'has_authorization' => $request->hasHeader('Authorization'),
+        ]);
         $options = ['query' => $request->query()];
 
         if ($request->allFiles()) {
@@ -166,14 +210,6 @@ class GatewayController extends Controller
             return 'order';
         }
 
-        if ($this->matchesAny($normalizedPath, self::INTERNAL_ORDER_PATH_PATTERNS)) {
-            return 'order';
-        }
-
-        if ($this->matchesAny($normalizedPath, self::INTERNAL_PAYMENT_PATH_PATTERNS)) {
-            return 'payment';
-        }
-
         $firstSegment = Str::of($normalizedPath)->before('/')->toString();
 
         return self::ROUTE_MAP[$firstSegment] ?? null;
@@ -201,6 +237,17 @@ class GatewayController extends Controller
         return false;
     }
 
+    private function isPublicRequest(Request $request, string $path): bool
+    {
+        $patterns = match ($request->method()) {
+            'GET', 'HEAD' => self::PUBLIC_GET_PATH_PATTERNS,
+            'POST' => self::PUBLIC_POST_PATH_PATTERNS,
+            default => [],
+        };
+
+        return $this->matchesAny($path, $patterns);
+    }
+
     private function targetUrl(string $serviceName, string $path): string
     {
         $baseUrl = rtrim((string) config("microservices.services.{$serviceName}.url"), '/');
@@ -215,9 +262,32 @@ class GatewayController extends Controller
                 'content-length',
                 'content-type',
                 'host',
+                'x-internal-service-token',
             ], true))
             ->mapWithKeys(fn (array $value, string $key) => [$key => implode(', ', $value)])
             ->all();
+    }
+
+    private function accessTokenIsActive(string $token): bool
+    {
+        $authUrl = rtrim((string) config('microservices.services.auth.url'), '/');
+        $internalToken = (string) config('microservices.internal_token');
+
+        if ($authUrl === '' || $internalToken === '') {
+            return false;
+        }
+
+        try {
+            $response = Http::acceptJson()
+                ->withHeader('X-Internal-Service-Token', $internalToken)
+                ->connectTimeout((int) config('microservices.connect_timeout', 2))
+                ->timeout((int) config('microservices.timeout', 5))
+                ->post($authUrl.'/api/internal/auth/introspect', ['token' => $token]);
+        } catch (ConnectionException) {
+            return false;
+        }
+
+        return $response->successful() && (bool) data_get($response->json(), 'data.active', false);
     }
 
     private function multipartPayload(Request $request): array

@@ -19,6 +19,8 @@ beforeEach(function () {
     DB::purge('bstore_catalog');
 
     foreach ([
+        'inventory_reservations',
+        'inventory_transactions',
         'inventories',
         'product_images',
         'product_variants',
@@ -102,6 +104,26 @@ beforeEach(function () {
         $table->unsignedBigInteger('product_variant_id')->unique();
         $table->integer('quantity')->default(0);
         $table->integer('reserved_quantity')->default(0);
+    });
+
+    Schema::connection('bstore_catalog')->create('inventory_reservations', function (Blueprint $table) {
+        $table->id();
+        $table->string('reference', 191);
+        $table->unsignedBigInteger('product_variant_id');
+        $table->unsignedInteger('quantity');
+        $table->string('status', 20)->default('reserved');
+        $table->timestamps();
+        $table->unique(['reference', 'product_variant_id']);
+    });
+
+    Schema::connection('bstore_catalog')->create('inventory_transactions', function (Blueprint $table) {
+        $table->id();
+        $table->unsignedBigInteger('product_variant_id');
+        $table->string('type', 50);
+        $table->integer('quantity');
+        $table->string('reference', 191)->nullable();
+        $table->text('note')->nullable();
+        $table->unsignedBigInteger('created_by')->nullable();
     });
 
     DB::connection('bstore_catalog')->table('brands')->insert([
@@ -402,6 +424,108 @@ test('new product list returns latest active category and brand products only', 
     $this->getJson('/api/products?brand=2')
         ->assertOk()
         ->assertJsonCount(0, 'data');
+});
+
+test('product variant synchronization preserves inventory and never leaves orphan inventory rows', function () {
+    $productId = $this->postJson('/api/products', [
+        ...productPayload('Inventory Safe Tablet'),
+        'variants' => [[
+            'sku' => 'SAFE-TABLET-128',
+            'price' => 12000000,
+            'status' => 'active',
+            'stock' => 5,
+        ]],
+    ])->assertCreated()->json('data.id');
+
+    $variantId = (int) DB::connection('bstore_catalog')
+        ->table('product_variants')
+        ->where('sku', 'SAFE-TABLET-128')
+        ->value('id');
+    $inventoryId = (int) DB::connection('bstore_catalog')
+        ->table('inventories')
+        ->where('product_variant_id', $variantId)
+        ->value('id');
+
+    $this->patchJson("/api/products/{$productId}", [
+        'variants' => [[
+            'sku' => 'SAFE-TABLET-128',
+            'price' => 12500000,
+            'status' => 'active',
+            'stock' => 8,
+        ]],
+    ])->assertOk();
+
+    $this->assertDatabaseHas('product_variants', [
+        'id' => $variantId,
+        'sku' => 'SAFE-TABLET-128',
+    ], 'bstore_catalog');
+    $this->assertDatabaseHas('inventories', [
+        'id' => $inventoryId,
+        'product_variant_id' => $variantId,
+        'quantity' => 8,
+    ], 'bstore_catalog');
+
+    $this->patchJson("/api/products/{$productId}", [
+        'variants' => [[
+            'sku' => 'SAFE-TABLET-256',
+            'price' => 13000000,
+            'status' => 'active',
+        ]],
+    ])->assertOk();
+
+    $this->assertDatabaseMissing('product_variants', ['id' => $variantId], 'bstore_catalog');
+    $this->assertDatabaseMissing('inventories', ['product_variant_id' => $variantId], 'bstore_catalog');
+    expect(DB::connection('bstore_catalog')->table('inventories')->count())->toBe(1)
+        ->and(
+            DB::connection('bstore_catalog')
+                ->table('inventories')
+                ->join('product_variants', 'product_variants.id', '=', 'inventories.product_variant_id')
+                ->where('product_variants.sku', 'SAFE-TABLET-256')
+                ->value('inventories.quantity')
+        )->toBe(0);
+
+    $this->deleteJson("/api/products/{$productId}")->assertOk();
+
+    expect(DB::connection('bstore_catalog')->table('inventories')->count())->toBe(0)
+        ->and(DB::connection('bstore_catalog')->table('product_variants')->count())->toBe(0);
+});
+
+test('active reservations prevent deleting a product variant and its inventory', function () {
+    $productId = $this->postJson('/api/products', [
+        ...productPayload('Reserved Tablet'),
+        'variants' => [[
+            'sku' => 'RESERVED-TABLET',
+            'price' => 12000000,
+            'status' => 'active',
+            'quantity' => 3,
+        ]],
+    ])->assertCreated()->json('data.id');
+    $variantId = (int) DB::connection('bstore_catalog')
+        ->table('product_variants')
+        ->where('sku', 'RESERVED-TABLET')
+        ->value('id');
+
+    DB::connection('bstore_catalog')->table('inventories')
+        ->where('product_variant_id', $variantId)
+        ->update(['reserved_quantity' => 1]);
+    DB::connection('bstore_catalog')->table('inventory_reservations')->insert([
+        'reference' => 'ORDER-BLOCKING',
+        'product_variant_id' => $variantId,
+        'quantity' => 1,
+        'status' => 'reserved',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $this->deleteJson("/api/products/{$productId}")
+        ->assertStatus(409)
+        ->assertJsonPath('data.reference', 'ORDER-BLOCKING');
+
+    $this->assertDatabaseHas('product_variants', ['id' => $variantId], 'bstore_catalog');
+    $this->assertDatabaseHas('inventories', [
+        'product_variant_id' => $variantId,
+        'reserved_quantity' => 1,
+    ], 'bstore_catalog');
 });
 
 test('slug migration adds and backfills slugs for existing products', function () {

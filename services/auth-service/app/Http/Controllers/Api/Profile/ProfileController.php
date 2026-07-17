@@ -9,12 +9,15 @@ use App\Http\Requests\Profile\UpdateAddressRequest;
 use App\Http\Requests\Profile\UpdateProfileRequest;
 use App\Models\User;
 use App\Models\UserAddress;
+use App\Services\AuthTokenService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
 class ProfileController extends Controller
 {
+    public function __construct(private readonly AuthTokenService $tokens) {}
+
     public function show(): JsonResponse
     {
         return response()->json([
@@ -55,6 +58,8 @@ class ProfileController extends Controller
         $user->forceFill([
             'password' => Hash::make($data['new_password']),
         ])->save();
+
+        $this->tokens->revokeAllForUser($user);
 
         return response()->json([
             'success' => true,

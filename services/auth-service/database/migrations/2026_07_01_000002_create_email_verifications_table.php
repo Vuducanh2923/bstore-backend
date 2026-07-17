@@ -21,6 +21,7 @@ return new class extends Migration
 
         if (! Schema::hasTable('email_verifications')) {
             Schema::create('email_verifications', function (Blueprint $table) {
+                $table->engine = 'InnoDB';
                 $table->id();
                 $table->string('email', 191)->index();
                 $table->string('otp_code');

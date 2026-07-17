@@ -44,4 +44,9 @@ class ProductVariant extends Model
     {
         return $this->hasOne(Inventory::class);
     }
+
+    public function inventoryReservations()
+    {
+        return $this->hasMany(InventoryReservation::class, 'product_variant_id');
+    }
 }

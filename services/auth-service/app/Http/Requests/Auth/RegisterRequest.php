@@ -27,7 +27,6 @@ class RegisterRequest extends FormRequest
             'gender' => ['nullable', Rule::in(['male', 'female', 'other'])],
             'date_of_birth' => ['nullable', 'date'],
             'avatar' => ['nullable', 'string', 'max:255'],
-            'status' => ['nullable', 'string', 'max:20'],
         ];
     }
 }

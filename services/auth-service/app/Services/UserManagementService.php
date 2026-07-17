@@ -31,6 +31,8 @@ class UserManagementService
         'status',
     ];
 
+    public function __construct(private readonly AuthTokenService $tokens) {}
+
     public function staff(array $filters = []): LengthAwarePaginator
     {
         return $this->usersByRole(User::ROLE_STAFF, $filters);
@@ -96,6 +98,10 @@ class UserManagementService
         $staff->fill($payload);
         $staff->save();
 
+        if (array_key_exists('password', $payload) || ! $staff->isActive()) {
+            $this->tokens->revokeAllForUser($staff);
+        }
+
         return $staff->refresh()->load('role');
     }
 
@@ -113,6 +119,8 @@ class UserManagementService
         $user->forceFill([
             'role_id' => $role->id,
         ])->save();
+
+        $this->tokens->revokeAllForUser($user);
 
         return $user->refresh()->load('role');
     }
@@ -169,6 +177,10 @@ class UserManagementService
         }
 
         $user->forceFill(['status' => $status])->save();
+
+        if (! $user->isActive()) {
+            $this->tokens->revokeAllForUser($user);
+        }
 
         return $user->refresh()->load('role');
     }

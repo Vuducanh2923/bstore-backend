@@ -39,6 +39,8 @@ return [
 
     'timeout' => (int) env('MICROSERVICE_TIMEOUT', 5),
 
+    'internal_service_token' => env('INTERNAL_SERVICE_TOKEN'),
+
     'order' => [
         'url' => env('ORDER_SERVICE_URL', 'http://127.0.0.1:8003'),
     ],

@@ -39,6 +39,7 @@ beforeEach(function () {
     Schema::connection('bstore_order')->create('orders', function (Blueprint $table) {
         $table->id();
         $table->unsignedBigInteger('user_id')->index();
+        $table->string('payment_status', 20)->default('unpaid');
     });
 });
 
@@ -57,7 +58,7 @@ test('cart detail route returns a cart with items', function () {
         'subtotal' => 2000000,
     ]);
 
-    $this->getJson("/api/carts/{$cartId}")
+    $this->withToken(customerAccessToken(10))->getJson("/api/carts/{$cartId}")
         ->assertOk()
         ->assertJsonPath('data.id', $cartId)
         ->assertJsonPath('data.user_id', 10)
@@ -65,7 +66,7 @@ test('cart detail route returns a cart with items', function () {
 });
 
 test('cart detail route returns not found for a missing cart', function () {
-    $this->getJson('/api/carts/999')
+    $this->withToken(customerAccessToken(10))->getJson('/api/carts/999')
         ->assertNotFound()
         ->assertJsonPath('success', false);
 });
@@ -73,6 +74,7 @@ test('cart detail route returns not found for a missing cart', function () {
 test('internal paid order cart clear removes active cart items for order user', function () {
     $orderId = DB::connection('bstore_order')->table('orders')->insertGetId([
         'user_id' => 10,
+        'payment_status' => 'paid',
     ]);
 
     $activeCartId = DB::connection('bstore_order')->table('carts')->insertGetId([
@@ -93,7 +95,7 @@ test('internal paid order cart clear removes active cart items for order user', 
     insertCartItem($inactiveCartId, 101);
     insertCartItem($otherUserCartId, 102);
 
-    $this->postJson("/api/internal/orders/{$orderId}/cart/clear")
+    $this->withHeaders(internalServiceHeaders())->postJson("/api/internal/orders/{$orderId}/cart/clear")
         ->assertOk()
         ->assertJsonPath('success', true)
         ->assertJsonPath('data.order_id', $orderId)
@@ -108,6 +110,7 @@ test('internal paid order cart clear removes active cart items for order user', 
 test('internal paid order cart clear is idempotent', function () {
     $orderId = DB::connection('bstore_order')->table('orders')->insertGetId([
         'user_id' => 10,
+        'payment_status' => 'paid',
     ]);
     $cartId = DB::connection('bstore_order')->table('carts')->insertGetId([
         'user_id' => 10,
@@ -116,21 +119,41 @@ test('internal paid order cart clear is idempotent', function () {
 
     insertCartItem($cartId, 99);
 
-    $this->postJson("/api/internal/orders/{$orderId}/cart/clear")
+    $this->withHeaders(internalServiceHeaders())->postJson("/api/internal/orders/{$orderId}/cart/clear")
         ->assertOk()
         ->assertJsonPath('data.deleted_items', 1);
 
-    $this->postJson("/api/internal/orders/{$orderId}/cart/clear")
+    $this->withHeaders(internalServiceHeaders())->postJson("/api/internal/orders/{$orderId}/cart/clear")
         ->assertOk()
         ->assertJsonPath('success', true)
         ->assertJsonPath('data.deleted_items', 0);
 });
 
 test('internal paid order cart clear returns not found for missing order', function () {
-    $this->postJson('/api/internal/orders/999/cart/clear')
+    $this->withHeaders(internalServiceHeaders())->postJson('/api/internal/orders/999/cart/clear')
         ->assertNotFound()
         ->assertJsonPath('success', false)
         ->assertJsonPath('data.order_found', false);
+});
+
+test('internal cart clear rejects an unpaid order without deleting items', function () {
+    $orderId = DB::connection('bstore_order')->table('orders')->insertGetId([
+        'user_id' => 10,
+        'payment_status' => 'unpaid',
+    ]);
+    $cartId = DB::connection('bstore_order')->table('carts')->insertGetId([
+        'user_id' => 10,
+        'status' => 'active',
+    ]);
+    insertCartItem($cartId, 99);
+
+    $this->withHeaders(internalServiceHeaders())
+        ->postJson("/api/internal/orders/{$orderId}/cart/clear")
+        ->assertStatus(409)
+        ->assertJsonPath('data.cleared', false)
+        ->assertJsonPath('data.paid', false);
+
+    expect(DB::connection('bstore_order')->table('cart_items')->where('cart_id', $cartId)->count())->toBe(1);
 });
 
 function insertCartItem(int $cartId, int $variantId): void

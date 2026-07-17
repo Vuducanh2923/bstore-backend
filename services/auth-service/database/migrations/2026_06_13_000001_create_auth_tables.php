@@ -10,6 +10,7 @@ return new class extends Migration
     {
         if (! Schema::hasTable('roles')) {
             Schema::create('roles', function (Blueprint $table) {
+                $table->engine = 'InnoDB';
                 $table->id();
                 $table->string('name', 100)->unique();
                 $table->text('description')->nullable();
@@ -18,12 +19,13 @@ return new class extends Migration
 
         if (! Schema::hasTable('users')) {
             Schema::create('users', function (Blueprint $table) {
+                $table->engine = 'InnoDB';
                 $table->id();
-                $table->unsignedBigInteger('role_id')->nullable()->index();
+                $table->unsignedBigInteger('role_id')->nullable();
                 $table->string('full_name', 191);
                 $table->string('email', 191)->unique();
                 $table->string('password');
-                $table->string('phone', 30)->nullable();
+                $table->string('phone', 30)->nullable()->unique();
                 $table->string('address', 500)->nullable();
                 $table->string('province', 100)->nullable();
                 $table->string('district', 100)->nullable();
@@ -35,13 +37,19 @@ return new class extends Migration
                 $table->string('status', 50)->nullable()->default('active');
                 $table->timestamp('last_login_at')->nullable();
                 $table->timestamp('created_at')->nullable();
+
+                $table->foreign('role_id')
+                    ->references('id')
+                    ->on('roles')
+                    ->nullOnDelete();
             });
         }
 
         if (! Schema::hasTable('user_addresses')) {
             Schema::create('user_addresses', function (Blueprint $table) {
+                $table->engine = 'InnoDB';
                 $table->id();
-                $table->unsignedBigInteger('user_id')->index();
+                $table->unsignedBigInteger('user_id');
                 $table->string('receiver_name', 100);
                 $table->string('receiver_phone', 30);
                 $table->string('receiver_email', 191)->nullable();
@@ -51,6 +59,11 @@ return new class extends Migration
                 $table->string('ward', 100)->nullable();
                 $table->boolean('is_default')->default(false);
                 $table->timestamps();
+
+                $table->foreign('user_id')
+                    ->references('id')
+                    ->on('users')
+                    ->cascadeOnDelete();
             });
         }
     }

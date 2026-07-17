@@ -14,721 +14,317 @@ beforeEach(function () {
             'prefix' => '',
             'foreign_key_constraints' => false,
         ],
+        'auth.token_key' => 'payment-access-secret-at-least-32-bytes',
+        'services.internal.token' => 'internal-secret',
+        'services.order.url' => 'http://order.test',
         'services.vnpay' => [
             'tmn_code' => 'TESTTMN',
             'hash_secret' => 'test-secret',
             'payment_url' => 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html',
             'return_url' => 'http://localhost:5173/payment/vnpay-return',
             'ipn_url' => 'http://localhost:8000/api/payments/vnpay/ipn',
+            'refund_url' => 'https://sandbox.vnpayment.vn/merchant_webapi/api/transaction',
+            'refund_user' => 'bstore-system',
             'timezone' => 'Asia/Ho_Chi_Minh',
         ],
-        'services.order.url' => 'http://order.test',
-        'services.timeout' => 10,
     ]);
 
     DB::purge('bstore_payment');
 
     Schema::connection('bstore_payment')->create('payments', function (Blueprint $table) {
         $table->id();
-        $table->unsignedBigInteger('order_id')->index();
+        $table->unsignedBigInteger('order_id')->unique();
         $table->string('payment_method', 50);
         $table->string('payment_provider', 50)->nullable();
-        $table->string('transaction_code', 191)->nullable();
+        $table->string('transaction_code', 191)->nullable()->unique();
         $table->decimal('amount', 15, 2)->default(0);
-        $table->string('status', 20)->nullable()->default('pending');
+        $table->string('status', 20)->default('pending');
         $table->dateTime('paid_at')->nullable();
     });
-
     Schema::connection('bstore_payment')->create('payment_transactions', function (Blueprint $table) {
         $table->id();
         $table->unsignedBigInteger('payment_id')->index();
-        $table->string('transaction_code', 191)->unique();
+        $table->string('transaction_code', 191);
         $table->string('provider', 100);
-        $table->decimal('amount', 15, 2)->default(0);
+        $table->decimal('amount', 15, 2);
         $table->string('status', 20);
         $table->json('response_data')->nullable();
+        $table->unique(['transaction_code', 'provider']);
     });
-
     Schema::connection('bstore_payment')->create('invoices', function (Blueprint $table) {
         $table->id();
-        $table->unsignedBigInteger('payment_id')->index();
-        $table->unsignedBigInteger('order_id')->index();
+        $table->unsignedBigInteger('payment_id')->unique();
+        $table->unsignedBigInteger('order_id')->unique();
         $table->string('invoice_code', 191)->unique();
-        $table->decimal('total_amount', 15, 2)->default(0);
+        $table->decimal('total_amount', 15, 2);
         $table->dateTime('issued_at')->nullable();
+    });
+    Schema::connection('bstore_payment')->create('payment_refunds', function (Blueprint $table) {
+        $table->id();
+        $table->unsignedBigInteger('payment_id');
+        $table->unsignedBigInteger('order_id');
+        $table->string('request_id', 64)->unique();
+        $table->string('provider_refund_id', 191)->nullable();
+        $table->decimal('amount', 15, 2);
+        $table->string('transaction_type', 2);
+        $table->string('status', 20);
+        $table->string('response_code', 10)->nullable();
+        $table->string('transaction_status', 10)->nullable();
+        $table->string('reason', 255);
+        $table->string('requested_by', 100);
+        $table->json('request_data')->nullable();
+        $table->json('response_data')->nullable();
+        $table->dateTime('requested_at');
+        $table->dateTime('completed_at')->nullable();
+        $table->timestamps();
     });
 });
 
-afterEach(function () {
-    Carbon::setTestNow();
-});
+afterEach(fn () => Carbon::setTestNow());
 
-test('creates a signed VNPAY payment URL', function () {
-    Carbon::setTestNow(Carbon::parse('2026-07-02 10:30:40', 'Asia/Ho_Chi_Minh'));
-    Http::fake();
+test('VNPAY URL uses the order amount and owner supplied by Order Service', function () {
+    Carbon::setTestNow(Carbon::parse('2026-07-13 10:30:40', 'Asia/Ho_Chi_Minh'));
+    paymentFakeOrderContext(123, 7, 90000, 'vnpay');
 
-    $response = $this
-        ->withHeader('X-Forwarded-For', '1.2.3.4, 5.6.7.8')
-        ->withHeader('Authorization', 'Bearer customer-token')
-        ->postJson('/api/payments/vnpay/create', [
-            'order_id' => 123,
-            'amount' => 90000,
-            'order_info' => 'Thanh toan don hang 123',
-        ]);
-
-    $response
-        ->assertCreated()
-        ->assertJsonPath('data.order_id', 123)
-        ->assertJsonPath('data.amount', '90000.00');
-
-    $paymentUrl = $response->json('data.payment_url');
-    parse_str((string) parse_url($paymentUrl, PHP_URL_QUERY), $query);
-
-    expect((string) parse_url($paymentUrl, PHP_URL_SCHEME).'://'.parse_url($paymentUrl, PHP_URL_HOST).parse_url($paymentUrl, PHP_URL_PATH))
-        ->toBe('https://sandbox.vnpayment.vn/paymentv2/vpcpay.html')
-        ->and($query['vnp_Version'])->toBe('2.1.0')
-        ->and($query['vnp_Command'])->toBe('pay')
-        ->and($query['vnp_TmnCode'])->toBe('TESTTMN')
-        ->and($query['vnp_Amount'])->toBe('9000000')
-        ->and($query['vnp_CurrCode'])->toBe('VND')
-        ->and($query['vnp_TxnRef'])->toBe((string) $response->json('data.payment_id'))
-        ->and($query['vnp_OrderInfo'])->toBe('Thanh toan don hang 123')
-        ->and($query['vnp_OrderType'])->toBe('other')
-        ->and($query['vnp_Locale'])->toBe('vn')
-        ->and($query['vnp_ReturnUrl'])->toBe('http://localhost:5173/payment/vnpay-return')
-        ->and($query['vnp_IpAddr'])->toBe('1.2.3.4')
-        ->and($query['vnp_CreateDate'])->toBe('20260702103040');
-
-    expect($query['vnp_SecureHash'])->toBe(vnpayPaymentTestHash($query));
-
-    $payment = DB::connection('bstore_payment')->table('payments')->first();
-
-    expect($payment->status)->toBe('pending')
-        ->and($payment->payment_method)->toBe('vnpay')
-        ->and($payment->payment_provider)->toBe('vnpay')
-        ->and($payment->transaction_code)->toBe((string) $payment->id);
-
-    Http::assertNothingSent();
-});
-
-test('creates a signed VNPAY payment URL with default order info', function () {
-    Http::fake();
-
-    $response = $this->postJson('/api/payments/vnpay/create', [
-        'order_id' => 456,
-        'amount' => 1000,
+    $response = $this->withToken(paymentAccessToken(7))->postJson('/api/payments/vnpay/create', [
+        'order_id' => 123,
+        'amount' => 1,
+        'order_info' => 'Thanh toan don 123',
     ]);
 
-    $response
-        ->assertCreated()
-        ->assertJsonPath('data.order_id', 456);
-
+    $response->assertCreated()->assertJsonPath('data.order_id', 123)->assertJsonPath('data.amount', '90000.00');
     parse_str((string) parse_url($response->json('data.payment_url'), PHP_URL_QUERY), $query);
 
-    expect($query['vnp_OrderInfo'])->toBe('Thanh toan don hang 456');
+    expect($query['vnp_Amount'])->toBe('9000000')
+        ->and($query['vnp_TmnCode'])->toBe('TESTTMN')
+        ->and($query['vnp_OrderInfo'])->toBe('Thanh toan don 123')
+        ->and($query['vnp_CreateDate'])->toBe('20260713103040')
+        ->and($query['vnp_SecureHash'])->toBe(paymentVnpayHash($query));
+
+    Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/internal/orders/123/payment-context?customer_id=7'
+        && $request->hasHeader('X-Internal-Service-Token', 'internal-secret'));
+});
+
+test('customer authentication and authoritative order context are mandatory', function () {
+    $this->postJson('/api/payments/vnpay/create', ['order_id' => 123])->assertUnauthorized();
+
+    Http::fake(['http://order.test/*' => Http::response(['success' => false, 'message' => 'Khong thuoc customer'], 403)]);
+    $this->withToken(paymentAccessToken(7))->postJson('/api/payments/vnpay/create', ['order_id' => 123])
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'Khong thuoc customer');
+
+    expect(DB::connection('bstore_payment')->table('payments')->count())->toBe(0);
+});
+
+test('COD amount is determined by Order Service and client controlled fields are ignored', function () {
+    paymentFakeOrderContext(124, 7, 75000, 'cod');
+
+    $this->withToken(paymentAccessToken(7))->postJson('/api/payments', [
+        'order_id' => 124,
+        'amount' => 1,
+        'status' => 'paid',
+    ])->assertCreated()
+        ->assertJsonPath('data.amount', '75000.00')
+        ->assertJsonPath('data.status', 'pending')
+        ->assertJsonPath('data.payment_method', 'cod');
+});
+
+test('a retry reuses one payment row and rotates the VNPAY transaction reference', function () {
+    paymentFakeOrderContext(123, 7, 90000, 'vnpay');
+    $first = $this->withToken(paymentAccessToken(7))->postJson('/api/payments/vnpay/create', ['order_id' => 123])->json('data.txn_ref');
+    $second = $this->withToken(paymentAccessToken(7))->postJson('/api/payments/vnpay/create', ['order_id' => 123])->json('data.txn_ref');
+
+    expect(DB::connection('bstore_payment')->table('payments')->count())->toBe(1)
+        ->and($first)->not->toBe($second);
+});
+
+test('browser return verifies but never settles a pending payment', function () {
+    $paymentId = paymentCreateVnpayPayment('RETURN-ONLY', 50000);
+    $payload = paymentSignedCallback('RETURN-ONLY', 50000, '777');
+
+    $this->getJson('/api/payments/vnpay/return?'.http_build_query($payload))
+        ->assertOk()
+        ->assertJsonPath('success', false)
+        ->assertJsonPath('data.provider_successful', true)
+        ->assertJsonPath('data.payment_status', 'pending');
+
+    expect(DB::connection('bstore_payment')->table('payments')->find($paymentId)->status)->toBe('pending');
     Http::assertNothingSent();
 });
 
-test('create VNPAY URL returns clear validation errors for missing fields', function () {
-    $this->postJson('/api/payments/vnpay/create', [])
-        ->assertUnprocessable()
-        ->assertJsonPath('success', false)
-        ->assertJsonPath('message', 'Payload tao thanh toan VNPAY khong hop le')
-        ->assertJsonValidationErrors(['order_id', 'amount'])
-        ->assertJsonMissingValidationErrors(['order_info'])
-        ->assertJsonPath('data.required_fields.amount', 'required numeric integer min:1000');
-
-    expect(DB::connection('bstore_payment')->table('payments')->count())->toBe(0);
-});
-
-test('create VNPAY URL rejects amount below minimum', function () {
-    $this->postJson('/api/payments/vnpay/create', [
-        'order_id' => 123,
-        'amount' => 999,
-        'order_info' => 'Thanh toan don hang 123',
-    ])
-        ->assertUnprocessable()
-        ->assertJsonValidationErrors(['amount'])
-        ->assertJsonPath('errors.amount.0', 'amount phai lon hon hoac bang 1000');
-
-    expect(DB::connection('bstore_payment')->table('payments')->count())->toBe(0);
-});
-
-test('create VNPAY URL rejects fractional VND amount', function () {
-    $this->postJson('/api/payments/vnpay/create', [
-        'order_id' => 123,
-        'amount' => 90000.5,
-        'order_info' => 'Thanh toan don hang 123',
-    ])
-        ->assertUnprocessable()
-        ->assertJsonValidationErrors(['amount'])
-        ->assertJsonPath('errors.amount.0', 'amount phai la so nguyen VND');
-
-    expect(DB::connection('bstore_payment')->table('payments')->count())->toBe(0);
-});
-
-test('create VNPAY URL does not require order lookup in order service', function () {
-    Http::fake();
-
-    $this->postJson('/api/payments/vnpay/create', [
-        'order_id' => 999,
-        'amount' => 90000,
-        'order_info' => 'Thanh toan don hang 999',
-    ])
-        ->assertCreated()
-        ->assertJsonPath('data.order_id', 999);
-
-    expect(DB::connection('bstore_payment')->table('payments')->where('order_id', 999)->exists())->toBeTrue();
-    Http::assertNothingSent();
-});
-
-test('create VNPAY URL failure returns clear error and marks order payment failed', function () {
-    config(['services.vnpay.hash_secret' => '']);
-
+test('IPN settles Order then Payment then Cart and is idempotent', function () {
     Http::fake([
-        'http://order.test/api/orders/123' => Http::response([
-            'success' => true,
-            'data' => ['id' => 123, 'payment_status' => 'failed'],
-        ]),
+        'http://order.test/api/internal/orders/123/payment-status' => Http::response(['success' => true, 'data' => ['updated' => true]]),
+        'http://order.test/api/internal/orders/123/cart/clear' => Http::response(['success' => true, 'data' => ['deleted_items' => 2]]),
     ]);
+    $paymentId = paymentCreateVnpayPayment('IPN-PAID', 50000);
+    $payload = paymentSignedCallback('IPN-PAID', 50000, '909090');
+    $query = http_build_query($payload);
 
-    $response = $this
-        ->withHeader('Authorization', 'Bearer customer-token')
-        ->postJson('/api/payments/vnpay/create', [
-            'order_id' => 123,
-            'amount' => 90000,
-            'order_info' => 'Thanh toan don hang 123',
-        ]);
+    $this->getJson('/api/payments/vnpay/ipn?'.$query)->assertOk()->assertJson(['RspCode' => '00']);
+    $this->getJson('/api/payments/vnpay/ipn?'.$query)->assertOk()->assertJson(['RspCode' => '00']);
 
-    $response
-        ->assertStatus(500)
-        ->assertJsonPath('success', false)
-        ->assertJsonPath('message', 'Khong tao duoc URL thanh toan VNPAY')
-        ->assertJsonPath('payload.order_id', 123)
-        ->assertJsonPath('data.order_update.updated', true);
-
-    expect(DB::connection('bstore_payment')->table('payments')->count())->toBe(0);
-
-    Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/orders/123'
-        && $request->method() === 'PATCH'
-        && $request['payment_status'] === 'failed'
-        && (
-            $request->hasHeader('Authorization', 'Bearer customer-token')
-            || $request->hasHeader('authorization', 'Bearer customer-token')
-        ));
-});
-
-test('creates another payment URL for the same unpaid order without creating another order', function () {
-    Http::fake();
-
-    $this->postJson('/api/payments/vnpay/create', [
-        'order_id' => 123,
-        'amount' => 90000,
-        'order_info' => 'Thanh toan lai don hang 123',
-    ])->assertCreated();
-
-    $this->postJson('/api/payments/vnpay/create', [
-        'order_id' => 123,
-        'amount' => 90000,
-        'order_info' => 'Thanh toan lai don hang 123',
-    ])
-        ->assertCreated()
-        ->assertJsonPath('data.order_id', 123);
-
-    expect(DB::connection('bstore_payment')->table('payments')->where('order_id', 123)->count())->toBe(2);
-    Http::assertNothingSent();
-});
-
-test('return callback verifies signature and marks payment paid', function () {
-    Http::fake([
-        'http://order.test/api/internal/orders/123/payment-status' => Http::response([
-            'success' => true,
-            'data' => [
-                'order_id' => 123,
-                'status' => 'confirmed',
-                'payment_status' => 'paid',
-            ],
-        ]),
-        'http://order.test/api/internal/orders/123/cart/clear' => Http::response([
-            'success' => true,
-            'data' => [
-                'order_id' => 123,
-                'user_id' => 10,
-                'deleted_items' => 2,
-            ],
-        ]),
-    ]);
-
-    $txnRef = 'PAY-RETURN-123';
-    $paymentId = vnpayPaymentTestCreatePayment($txnRef, 120000);
-    $payload = vnpayPaymentTestSignedPayload([
-        'vnp_TxnRef' => $txnRef,
-        'vnp_Amount' => '12000000',
-        'vnp_ResponseCode' => '00',
-        'vnp_TmnCode' => 'TESTTMN',
-        'vnp_TransactionStatus' => '00',
-        'vnp_TransactionNo' => '14131242',
-        'vnp_OrderInfo' => 'Thanh toan don hang 123',
-    ]);
-
-    $this->getJson('/api/payments/vnpay/return?'.http_build_query($payload, '', '&', PHP_QUERY_RFC1738))
-        ->assertOk()
-        ->assertJsonPath('success', true)
-        ->assertJsonPath('message', 'Thanh toán thành công')
-        ->assertJsonPath('data.verified', true)
-        ->assertJsonPath('data.successful', true)
-        ->assertJsonPath('data.payment_status', 'paid')
-        ->assertJsonPath('data.payment_id', $paymentId)
-        ->assertJsonPath('data.order_id', 123)
-        ->assertJsonPath('data.amount', '120000.00')
-        ->assertJsonPath('data.order_updated', true)
-        ->assertJsonPath('data.transaction_code', $txnRef)
-        ->assertJsonPath('data.cart_clear.cleared', true)
-        ->assertJsonPath('data.cart_clear.response.data.deleted_items', 2);
-
-    $payment = DB::connection('bstore_payment')->table('payments')->where('id', $paymentId)->first();
-    $transaction = DB::connection('bstore_payment')->table('payment_transactions')->where('payment_id', $paymentId)->latest('id')->first();
-
+    $payment = DB::connection('bstore_payment')->table('payments')->find($paymentId);
     expect($payment->status)->toBe('paid')
-        ->and($payment->paid_at)->not->toBeNull()
-        ->and($transaction->transaction_code)->toBe('14131242')
-        ->and($transaction->status)->toBe('paid');
+        ->and(DB::connection('bstore_payment')->table('invoices')->where('payment_id', $paymentId)->count())->toBe(1)
+        ->and(DB::connection('bstore_payment')->table('payment_transactions')->where('transaction_code', '909090')->count())->toBe(1);
 
-    Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/internal/orders/123/cart/clear'
-        && $request->method() === 'POST'
-        && $request['reason'] === 'vnpay_paid');
-    Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/internal/orders/123/payment-status'
-        && $request->method() === 'PATCH'
-        && $request['payment_status'] === 'paid'
-        && $request['status'] === 'confirmed'
-        && $request['payment_method'] === 'vnpay');
+    Http::assertSent(fn ($request) => $request->hasHeader('X-Internal-Service-Token', 'internal-secret'));
 });
 
-test('return callback stays successful when order service payment update fails', function () {
+test('IPN remains retryable and does not mark Payment paid when Order synchronization fails', function () {
+    Http::fake(['http://order.test/*' => Http::response(['success' => false], 503)]);
+    $paymentId = paymentCreateVnpayPayment('IPN-RETRY', 50000);
+    $payload = paymentSignedCallback('IPN-RETRY', 50000, '818181');
+
+    $this->getJson('/api/payments/vnpay/ipn?'.http_build_query($payload))
+        ->assertOk()
+        ->assertJson(['RspCode' => '99']);
+
+    expect(DB::connection('bstore_payment')->table('payments')->find($paymentId)->status)->toBe('pending')
+        ->and(DB::connection('bstore_payment')->table('payment_transactions')->where('transaction_code', '818181')->value('status'))->toBe('sync_pending');
+});
+
+test('IPN rejects invalid signature and mismatched amount without mutation', function () {
+    $paymentId = paymentCreateVnpayPayment('IPN-VERIFY', 50000);
+    $payload = paymentSignedCallback('IPN-VERIFY', 50000, '717171');
+    $payload['vnp_Amount'] = '1';
+
+    $this->getJson('/api/payments/vnpay/ipn?'.http_build_query($payload))->assertJson(['RspCode' => '97']);
+    expect(DB::connection('bstore_payment')->table('payments')->find($paymentId)->status)->toBe('pending');
+
+    $payload = paymentSignedCallback('IPN-VERIFY', 51000, '717171');
+    $this->getJson('/api/payments/vnpay/ipn?'.http_build_query($payload))->assertJson(['RspCode' => '04']);
+});
+
+test('internal refund calls signed VNPAY refund once and updates payment', function () {
+    $paymentId = paymentCreatePaidVnpayPayment('PAY-REFUND', 50000, '123456');
+    Http::fake(function ($request) {
+        $requestData = $request->data();
+        $body = [
+            'vnp_ResponseId' => 'RESP01',
+            'vnp_Command' => 'refund',
+            'vnp_ResponseCode' => '00',
+            'vnp_Message' => 'Success',
+            'vnp_TmnCode' => 'TESTTMN',
+            'vnp_TxnRef' => $requestData['vnp_TxnRef'],
+            'vnp_Amount' => $requestData['vnp_Amount'],
+            'vnp_BankCode' => 'NCB',
+            'vnp_PayDate' => '20260713110000',
+            'vnp_TransactionNo' => '654321',
+            'vnp_TransactionType' => $requestData['vnp_TransactionType'],
+            'vnp_TransactionStatus' => '00',
+            'vnp_OrderInfo' => $requestData['vnp_OrderInfo'],
+        ];
+        $body['vnp_SecureHash'] = paymentRefundResponseHash($body);
+
+        return Http::response($body);
+    });
+    $headers = ['X-Internal-Service-Token' => 'internal-secret'];
+    $data = ['amount' => 50000, 'reason' => 'Hoan don 123', 'requested_by' => 'admin:1', 'idempotency_key' => 'refund-request-10'];
+
+    $this->withHeaders($headers)->postJson('/api/internal/payments/123/refunds', $data)
+        ->assertOk()->assertJsonPath('data.status', 'refunded');
+    $this->withHeaders($headers)->postJson('/api/internal/payments/123/refunds', $data)
+        ->assertOk()->assertJsonPath('data.status', 'refunded');
+
+    expect(DB::connection('bstore_payment')->table('payments')->find($paymentId)->status)->toBe('refunded')
+        ->and(DB::connection('bstore_payment')->table('payment_refunds')->count())->toBe(1);
+    Http::assertSentCount(1);
+    Http::assertSent(function ($request) {
+        $data = $request->data();
+        $withoutHash = $data;
+        unset($withoutHash['vnp_SecureHash']);
+
+        return $request->url() === 'https://sandbox.vnpayment.vn/merchant_webapi/api/transaction'
+            && $data['vnp_Command'] === 'refund'
+            && $data['vnp_Amount'] === 5000000
+            && $data['vnp_SecureHash'] === hash_hmac('sha512', implode('|', array_values($withoutHash)), 'test-secret');
+    });
+});
+
+function paymentFakeOrderContext(int $orderId, int $customerId, int $amount, string $method): void
+{
     Http::fake([
-        'http://order.test/api/internal/orders/123/payment-status' => Http::response([
-            'success' => false,
-            'message' => 'Order update failed',
-        ], 500),
-        'http://order.test/api/internal/orders/123/cart/clear' => Http::response([
-            'success' => true,
-            'data' => ['order_id' => 123, 'deleted_items' => 2],
-        ]),
-    ]);
-
-    $txnRef = 'PAY-RETURN-ORDER-UPDATE-FAILS';
-    $paymentId = vnpayPaymentTestCreatePayment($txnRef, 120000);
-    $payload = vnpayPaymentTestSignedPayload([
-        'vnp_TxnRef' => $txnRef,
-        'vnp_Amount' => '12000000',
-        'vnp_ResponseCode' => '00',
-        'vnp_TmnCode' => 'TESTTMN',
-        'vnp_TransactionStatus' => '00',
-        'vnp_TransactionNo' => '14131243',
-        'vnp_OrderInfo' => 'Thanh toan don hang 123',
-    ]);
-
-    $this->getJson('/api/payments/vnpay/return?'.http_build_query($payload, '', '&', PHP_QUERY_RFC1738))
-        ->assertOk()
-        ->assertJsonPath('success', true)
-        ->assertJsonPath('message', 'Thanh toán thành công')
-        ->assertJsonPath('data.payment_status', 'paid')
-        ->assertJsonPath('data.payment_id', $paymentId)
-        ->assertJsonPath('data.order_id', 123)
-        ->assertJsonPath('data.order_updated', false)
-        ->assertJsonPath('data.order_update.status', 500);
-
-    $payment = DB::connection('bstore_payment')->table('payments')->where('id', $paymentId)->first();
-
-    expect($payment->status)->toBe('paid')
-        ->and($payment->paid_at)->not->toBeNull();
-});
-
-test('return callback is idempotent for the same VNPAY transaction number', function () {
-    Http::fake([
-        'http://order.test/api/internal/orders/123/payment-status' => Http::response([
+        "http://order.test/api/internal/orders/{$orderId}/payment-context*" => Http::response([
             'success' => true,
             'data' => [
-                'order_id' => 123,
-                'status' => 'confirmed',
-                'payment_status' => 'paid',
-            ],
-        ]),
-        'http://order.test/api/internal/orders/123/cart/clear' => Http::sequence()
-            ->push([
-                'success' => true,
-                'data' => ['order_id' => 123, 'deleted_items' => 2],
-            ])
-            ->push([
-                'success' => true,
-                'data' => ['order_id' => 123, 'deleted_items' => 0],
-            ]),
-    ]);
-
-    $txnRef = 'PAY-RETURN-IDEMPOTENT';
-    $paymentId = vnpayPaymentTestCreatePayment($txnRef, 120000);
-    $payload = vnpayPaymentTestSignedPayload([
-        'vnp_TxnRef' => $txnRef,
-        'vnp_Amount' => '12000000',
-        'vnp_ResponseCode' => '00',
-        'vnp_TmnCode' => 'TESTTMN',
-        'vnp_TransactionStatus' => '00',
-        'vnp_TransactionNo' => '14131242',
-        'vnp_OrderInfo' => 'Thanh toan don hang 123',
-    ]);
-    $query = http_build_query($payload, '', '&', PHP_QUERY_RFC1738);
-
-    $this->getJson('/api/payments/vnpay/return?'.$query)
-        ->assertOk()
-        ->assertJsonPath('success', true)
-        ->assertJsonPath('message', 'Thanh toán thành công')
-        ->assertJsonPath('data.payment_status', 'paid')
-        ->assertJsonPath('data.payment_id', $paymentId);
-
-    $this->getJson('/api/payments/vnpay/return?'.$query)
-        ->assertOk()
-        ->assertJsonPath('success', true)
-        ->assertJsonPath('message', 'Thanh toán thành công')
-        ->assertJsonPath('data.verified', true)
-        ->assertJsonPath('data.successful', true)
-        ->assertJsonPath('data.payment_status', 'paid')
-        ->assertJsonPath('data.payment_id', $paymentId)
-        ->assertJsonPath('data.order_id', 123)
-        ->assertJsonPath('data.order_updated', true)
-        ->assertJsonPath('data.cart_clear.response.data.deleted_items', 0);
-
-    $payment = DB::connection('bstore_payment')->table('payments')->where('id', $paymentId)->first();
-    $transactions = DB::connection('bstore_payment')->table('payment_transactions')
-        ->where('transaction_code', '14131242')
-        ->where('provider', 'vnpay')
-        ->count();
-
-    expect($payment->status)->toBe('paid')
-        ->and($transactions)->toBe(1);
-
-    Http::assertSentCount(4);
-});
-
-test('return callback keeps an already paid payment successful when a later callback reports failure', function () {
-    Http::fake([
-        'http://order.test/api/internal/orders/123/payment-status' => Http::response([
-            'success' => true,
-            'data' => [
-                'order_id' => 123,
-                'status' => 'confirmed',
-                'payment_status' => 'paid',
-            ],
-        ]),
-        'http://order.test/api/internal/orders/123/cart/clear' => Http::response([
-            'success' => true,
-            'data' => ['order_id' => 123, 'deleted_items' => 0],
-        ]),
-    ]);
-
-    $txnRef = 'PAY-RETURN-ALREADY-PAID';
-    $paymentId = vnpayPaymentTestCreatePayment($txnRef, 120000, 'paid');
-    $payload = vnpayPaymentTestSignedPayload([
-        'vnp_TxnRef' => $txnRef,
-        'vnp_Amount' => '12000000',
-        'vnp_ResponseCode' => '24',
-        'vnp_TmnCode' => 'TESTTMN',
-        'vnp_TransactionStatus' => '02',
-        'vnp_TransactionNo' => '14139999',
-        'vnp_OrderInfo' => 'Khach reload callback cu',
-    ]);
-
-    $this->getJson('/api/payments/vnpay/return?'.http_build_query($payload, '', '&', PHP_QUERY_RFC1738))
-        ->assertOk()
-        ->assertJsonPath('success', true)
-        ->assertJsonPath('message', 'Thanh toán thành công')
-        ->assertJsonPath('data.verified', true)
-        ->assertJsonPath('data.successful', true)
-        ->assertJsonPath('data.payment_status', 'paid')
-        ->assertJsonPath('data.payment_id', $paymentId)
-        ->assertJsonPath('data.order_id', 123)
-        ->assertJsonPath('data.amount', '120000.00')
-        ->assertJsonPath('data.order_updated', true);
-
-    $payment = DB::connection('bstore_payment')->table('payments')->where('id', $paymentId)->first();
-    $transactions = DB::connection('bstore_payment')->table('payment_transactions')
-        ->where('transaction_code', '14139999')
-        ->count();
-
-    expect($payment->status)->toBe('paid')
-        ->and($payment->paid_at)->not->toBeNull()
-        ->and($transactions)->toBe(0);
-});
-
-test('return callback keeps all VNPAY params when verifying signature', function () {
-    Http::fake([
-        'http://order.test/api/internal/orders/123/payment-status' => Http::response([
-            'success' => true,
-            'data' => [
-                'order_id' => 123,
-                'status' => 'confirmed',
-                'payment_status' => 'paid',
-            ],
-        ]),
-        'http://order.test/api/internal/orders/123/cart/clear' => Http::response([
-            'success' => true,
-            'data' => [
-                'order_id' => 123,
-                'deleted_items' => 1,
+                'order_id' => $orderId,
+                'customer_id' => $customerId,
+                'final_amount' => $amount,
+                'payment_method' => $method,
+                'payment_status' => 'pending',
+                'order_status' => 'pending',
             ],
         ]),
     ]);
+}
 
-    $txnRef = 'PAY-RETURN-FULL';
-    $paymentId = vnpayPaymentTestCreatePayment($txnRef, 120000);
-    $payload = vnpayPaymentTestSignedPayload([
-        'vnp_Amount' => '12000000',
-        'vnp_BankCode' => 'NCB',
-        'vnp_BankTranNo' => 'VNP14131242',
-        'vnp_CardType' => 'ATM',
-        'vnp_OrderInfo' => 'Thanh toan don hang 123',
-        'vnp_PayDate' => '20260702104512',
-        'vnp_ResponseCode' => '00',
-        'vnp_TmnCode' => 'TESTTMN',
-        'vnp_TransactionNo' => '14131242',
-        'vnp_TransactionStatus' => '00',
-        'vnp_TxnRef' => $txnRef,
-    ]);
+function paymentAccessToken(int $userId, string $role = 'CUSTOMER'): string
+{
+    $now = Carbon::now()->timestamp;
+    $header = paymentBase64Url(json_encode(['typ' => 'JWT', 'alg' => 'HS256'], JSON_THROW_ON_ERROR));
+    $payload = paymentBase64Url(json_encode([
+        'token_type' => 'access', 'sub' => $userId, 'role' => $role, 'sid' => 'session-1', 'jti' => 'jti-1',
+        'iat' => $now - 1, 'nbf' => $now - 1, 'exp' => $now + 3600,
+    ], JSON_THROW_ON_ERROR));
+    $signature = paymentBase64Url(hash_hmac('sha256', "{$header}.{$payload}", 'payment-access-secret-at-least-32-bytes', true));
 
-    $this->getJson('/api/payments/vnpay/return?'.http_build_query($payload, '', '&', PHP_QUERY_RFC1738))
-        ->assertOk()
-        ->assertJsonPath('success', true)
-        ->assertJsonPath('message', 'Thanh toán thành công')
-        ->assertJsonPath('data.verified', true)
-        ->assertJsonPath('data.successful', true)
-        ->assertJsonPath('data.payment_status', 'paid')
-        ->assertJsonPath('data.payment_id', $paymentId)
-        ->assertJsonPath('data.order_id', 123)
-        ->assertJsonPath('data.amount', '120000.00')
-        ->assertJsonPath('data.order_updated', true)
-        ->assertJsonPath('data.transaction_code', $txnRef)
-        ->assertJsonPath('data.cart_clear.cleared', true);
+    return "{$header}.{$payload}.{$signature}";
+}
 
-    $payment = DB::connection('bstore_payment')->table('payments')->where('id', $paymentId)->first();
+function paymentBase64Url(string $value): string
+{
+    return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
+}
 
-    expect($payment->status)->toBe('paid');
-});
-
-test('return callback rejects response code 00 when secure hash is invalid', function () {
-    $txnRef = 'PAY-RETURN-BAD-HASH';
-    $paymentId = vnpayPaymentTestCreatePayment($txnRef, 120000);
-    $payload = vnpayPaymentTestSignedPayload([
-        'vnp_Amount' => '12000000',
-        'vnp_BankCode' => 'NCB',
-        'vnp_OrderInfo' => 'Thanh toan don hang 123',
-        'vnp_ResponseCode' => '00',
-        'vnp_TmnCode' => 'TESTTMN',
-        'vnp_TransactionNo' => '14131242',
-        'vnp_TransactionStatus' => '00',
-        'vnp_TxnRef' => $txnRef,
-    ]);
-    $payload['vnp_BankCode'] = 'VCB';
-
-    $this->getJson('/api/payments/vnpay/return?'.http_build_query($payload, '', '&', PHP_QUERY_RFC1738))
-        ->assertOk()
-        ->assertJsonPath('success', false)
-        ->assertExactJson([
-            'success' => false,
-            'message' => 'Chu ky VNPAY khong hop le',
-        ]);
-
-    $payment = DB::connection('bstore_payment')->table('payments')->where('id', $paymentId)->first();
-    $transactions = DB::connection('bstore_payment')->table('payment_transactions')->where('payment_id', $paymentId)->count();
-
-    expect($payment->status)->toBe('pending')
-        ->and($payment->paid_at)->toBeNull()
-        ->and($transactions)->toBe(0);
-});
-
-test('return callback returns success when secure hash is invalid but payment was already paid', function () {
-    Http::fake([
-        'http://order.test/api/internal/orders/123/payment-status' => Http::response([
-            'success' => true,
-            'data' => [
-                'order_id' => 123,
-                'status' => 'confirmed',
-                'payment_status' => 'paid',
-            ],
-        ]),
-    ]);
-
-    $txnRef = 'PAY-RETURN-BAD-HASH-PAID';
-    $paymentId = vnpayPaymentTestCreatePayment($txnRef, 120000, 'paid');
-    $payload = vnpayPaymentTestSignedPayload([
-        'vnp_Amount' => '12000000',
-        'vnp_BankCode' => 'NCB',
-        'vnp_OrderInfo' => 'Thanh toan don hang 123',
-        'vnp_ResponseCode' => '00',
-        'vnp_TmnCode' => 'TESTTMN',
-        'vnp_TransactionNo' => '14137777',
-        'vnp_TransactionStatus' => '00',
-        'vnp_TxnRef' => $txnRef,
-    ]);
-    $payload['vnp_BankCode'] = 'VCB';
-
-    $this->getJson('/api/payments/vnpay/return?'.http_build_query($payload, '', '&', PHP_QUERY_RFC1738))
-        ->assertOk()
-        ->assertJsonPath('success', true)
-        ->assertJsonPath('message', 'Thanh toán thành công')
-        ->assertJsonPath('data.verified', true)
-        ->assertJsonPath('data.successful', true)
-        ->assertJsonPath('data.payment_status', 'paid')
-        ->assertJsonPath('data.payment_id', $paymentId)
-        ->assertJsonPath('data.order_id', 123)
-        ->assertJsonPath('data.amount', '120000.00')
-        ->assertJsonPath('data.order_updated', true);
-
-    $transactions = DB::connection('bstore_payment')->table('payment_transactions')
-        ->where('transaction_code', '14137777')
-        ->count();
-
-    expect($transactions)->toBe(0);
-    Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/internal/orders/123/payment-status'
-        && $request->method() === 'PATCH'
-        && $request['payment_status'] === 'paid');
-});
-
-test('return callback returns clear JSON when query params are missing', function () {
-    $this->getJson('/api/payments/vnpay/return?vnp_ResponseCode=00')
-        ->assertOk()
-        ->assertJsonPath('success', false)
-        ->assertJsonPath('message', 'Thieu tham so VNPAY return')
-        ->assertJsonPath('errors.missing.0', 'vnp_Amount')
-        ->assertJsonPath('errors.missing.1', 'vnp_TmnCode')
-        ->assertJsonPath('errors.missing.2', 'vnp_TransactionStatus')
-        ->assertJsonPath('errors.missing.3', 'vnp_TxnRef')
-        ->assertJsonPath('errors.missing.4', 'vnp_SecureHash');
-});
-
-test('ipn callback marks payment failed when VNPAY reports a failed transaction', function () {
-    $txnRef = 'PAY-IPN-FAILED';
-    $paymentId = vnpayPaymentTestCreatePayment($txnRef, 50000);
-    $payload = vnpayPaymentTestSignedPayload([
-        'vnp_TxnRef' => $txnRef,
-        'vnp_Amount' => '5000000',
-        'vnp_ResponseCode' => '24',
-        'vnp_TransactionStatus' => '02',
-        'vnp_TransactionNo' => '0',
-        'vnp_OrderInfo' => 'Khach huy thanh toan',
-    ]);
-
-    $this->getJson('/api/payments/vnpay/ipn?'.http_build_query($payload, '', '&', PHP_QUERY_RFC1738))
-        ->assertOk()
-        ->assertJson([
-            'RspCode' => '00',
-            'Message' => 'Confirm Success',
-        ]);
-
-    $payment = DB::connection('bstore_payment')->table('payments')->where('id', $paymentId)->first();
-
-    expect($payment->status)->toBe('failed')
-        ->and($payment->paid_at)->toBeNull();
-});
-
-test('ipn successful callback clears order cart', function () {
-    Http::fake([
-        'http://order.test/api/internal/orders/123/payment-status' => Http::response([
-            'success' => true,
-            'data' => [
-                'order_id' => 123,
-                'status' => 'confirmed',
-                'payment_status' => 'paid',
-            ],
-        ]),
-        'http://order.test/api/internal/orders/123/cart/clear' => Http::response([
-            'success' => true,
-            'data' => [
-                'order_id' => 123,
-                'deleted_items' => 2,
-            ],
-        ]),
-    ]);
-
-    $txnRef = 'PAY-IPN-PAID';
-    $paymentId = vnpayPaymentTestCreatePayment($txnRef, 50000);
-    $payload = vnpayPaymentTestSignedPayload([
-        'vnp_TxnRef' => $txnRef,
-        'vnp_Amount' => '5000000',
-        'vnp_ResponseCode' => '00',
-        'vnp_TransactionStatus' => '00',
-        'vnp_TransactionNo' => '909090',
-        'vnp_OrderInfo' => 'Thanh toan don hang 123',
-    ]);
-
-    $this->getJson('/api/payments/vnpay/ipn?'.http_build_query($payload, '', '&', PHP_QUERY_RFC1738))
-        ->assertOk()
-        ->assertJson([
-            'RspCode' => '00',
-            'Message' => 'Confirm Success',
-        ]);
-
-    $payment = DB::connection('bstore_payment')->table('payments')->where('id', $paymentId)->first();
-
-    expect($payment->status)->toBe('paid')
-        ->and($payment->paid_at)->not->toBeNull();
-
-    Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/internal/orders/123/cart/clear'
-        && $request->method() === 'POST'
-        && $request['reason'] === 'vnpay_paid');
-    Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/internal/orders/123/payment-status'
-        && $request->method() === 'PATCH'
-        && $request['payment_status'] === 'paid');
-});
-
-test('ipn callback rejects invalid secure hash without updating payment', function () {
-    $txnRef = 'PAY-IPN-BAD-HASH';
-    $paymentId = vnpayPaymentTestCreatePayment($txnRef, 70000);
-    $payload = vnpayPaymentTestSignedPayload([
-        'vnp_TxnRef' => $txnRef,
-        'vnp_Amount' => '7000000',
-        'vnp_ResponseCode' => '00',
-        'vnp_TransactionStatus' => '00',
-        'vnp_TransactionNo' => '998877',
-    ]);
-    $payload['vnp_Amount'] = '7100000';
-
-    $this->getJson('/api/payments/vnpay/ipn?'.http_build_query($payload, '', '&', PHP_QUERY_RFC1738))
-        ->assertOk()
-        ->assertJson([
-            'RspCode' => '97',
-            'Message' => 'Invalid signature',
-        ]);
-
-    $payment = DB::connection('bstore_payment')->table('payments')->where('id', $paymentId)->first();
-    $transactions = DB::connection('bstore_payment')->table('payment_transactions')->where('payment_id', $paymentId)->count();
-
-    expect($payment->status)->toBe('pending')
-        ->and($transactions)->toBe(0);
-});
-
-function vnpayPaymentTestCreatePayment(string $txnRef, int $amount, string $status = 'pending'): int
+function paymentCreateVnpayPayment(string $txnRef, int $amount, string $status = 'pending'): int
 {
     return DB::connection('bstore_payment')->table('payments')->insertGetId([
-        'order_id' => 123,
-        'payment_method' => 'vnpay',
-        'payment_provider' => 'vnpay',
-        'transaction_code' => $txnRef,
-        'amount' => $amount,
-        'status' => $status,
+        'order_id' => 123, 'payment_method' => 'vnpay', 'payment_provider' => 'vnpay',
+        'transaction_code' => $txnRef, 'amount' => $amount, 'status' => $status,
         'paid_at' => $status === 'paid' ? now() : null,
     ]);
 }
 
-function vnpayPaymentTestSignedPayload(array $payload): array
+function paymentCreatePaidVnpayPayment(string $txnRef, int $amount, string $transactionNo): int
 {
-    $payload['vnp_SecureHash'] = vnpayPaymentTestHash($payload);
+    $id = paymentCreateVnpayPayment($txnRef, $amount, 'paid');
+    DB::connection('bstore_payment')->table('payment_transactions')->insert([
+        ['payment_id' => $id, 'transaction_code' => $txnRef, 'provider' => 'vnpay', 'amount' => $amount, 'status' => 'pending', 'response_data' => json_encode(['event' => 'create_payment_url', 'vnp_CreateDate' => '20260713100000'])],
+        ['payment_id' => $id, 'transaction_code' => $transactionNo, 'provider' => 'vnpay', 'amount' => $amount, 'status' => 'paid', 'response_data' => json_encode(['vnp_TransactionNo' => $transactionNo])],
+    ]);
+
+    return $id;
+}
+
+function paymentSignedCallback(string $txnRef, int $amount, string $transactionNo): array
+{
+    $payload = [
+        'vnp_Amount' => (string) ($amount * 100), 'vnp_ResponseCode' => '00', 'vnp_TmnCode' => 'TESTTMN',
+        'vnp_TransactionStatus' => '00', 'vnp_TxnRef' => $txnRef, 'vnp_TransactionNo' => $transactionNo,
+    ];
+    $payload['vnp_SecureHash'] = paymentVnpayHash($payload);
 
     return $payload;
 }
 
-function vnpayPaymentTestHash(array $payload): string
+function paymentVnpayHash(array $payload): string
 {
     unset($payload['vnp_SecureHash'], $payload['vnp_SecureHashType']);
     ksort($payload);
+    $data = collect($payload)->map(fn ($value, $key) => urlencode($key).'='.urlencode((string) $value))->implode('&');
 
-    return hash_hmac('sha512', http_build_query($payload, '', '&', PHP_QUERY_RFC1738), 'test-secret');
+    return hash_hmac('sha512', $data, 'test-secret');
+}
+
+function paymentRefundResponseHash(array $body): string
+{
+    $fields = [
+        'vnp_ResponseId', 'vnp_Command', 'vnp_ResponseCode', 'vnp_Message', 'vnp_TmnCode', 'vnp_TxnRef',
+        'vnp_Amount', 'vnp_BankCode', 'vnp_PayDate', 'vnp_TransactionNo', 'vnp_TransactionType',
+        'vnp_TransactionStatus', 'vnp_OrderInfo',
+    ];
+
+    return hash_hmac('sha512', implode('|', array_map(fn ($field) => (string) ($body[$field] ?? ''), $fields)), 'test-secret');
 }

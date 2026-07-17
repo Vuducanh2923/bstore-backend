@@ -13,13 +13,13 @@ class CustomerEmailClient
     {
         $baseUrl = rtrim((string) config('services.auth.url'), '/');
 
-        if ($baseUrl === '') {
+        if ($baseUrl === '' || (string) config('services.internal.token') === '') {
             return null;
         }
 
         try {
             $response = $this->request()
-                ->get("{$baseUrl}/api/users/{$userId}");
+                ->get("{$baseUrl}/api/internal/users/{$userId}");
         } catch (Throwable $exception) {
             Log::warning('Could not fetch customer email from Auth Service.', [
                 'user_id' => $userId,
@@ -41,6 +41,10 @@ class CustomerEmailClient
     private function request(): PendingRequest
     {
         return Http::acceptJson()
+            ->withHeader(
+                (string) config('services.internal.header', 'X-Internal-Service-Token'),
+                (string) config('services.internal.token'),
+            )
             ->connectTimeout((int) config('services.connect_timeout', 2))
             ->timeout((int) config('services.timeout', 5))
             ->retry(2, 100, null, false);

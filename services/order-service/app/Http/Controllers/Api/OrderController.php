@@ -172,12 +172,35 @@ class OrderController extends Controller
         ]);
     }
 
+    public function internalPaymentContext(Request $request, int|string $orderId): JsonResponse
+    {
+        $data = $request->validate([
+            'customer_id' => ['nullable', 'integer', 'min:1'],
+        ]);
+        $context = $this->orderService->paymentContext(
+            (int) $orderId,
+            isset($data['customer_id']) ? (int) $data['customer_id'] : null,
+        );
+
+        if (! $context) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Khong tim thay don hang phu hop',
+                'data' => null,
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Lay ngu canh thanh toan thanh cong',
+            'data' => $context,
+        ]);
+    }
+
     public function internalUpdatePaymentStatus(Request $request, int|string $orderId): JsonResponse
     {
         $data = $request->validate([
             'payment_status' => ['required', 'string', Rule::in(array_keys(Order::PAYMENT_STATUS_LABELS))],
-            'status' => ['nullable', 'string', 'max:30'],
-            'payment_method' => ['nullable', 'string', 'max:50'],
             'paid_at' => ['nullable', 'date'],
         ]);
 
@@ -207,6 +230,7 @@ class OrderController extends Controller
             'payment_status' => $order->payment_status,
             'payment_method' => $order->getAttribute('payment_method'),
             'paid_at' => $order->getAttribute('paid_at'),
+            'updated' => true,
         ];
 
         Log::info('order.internal_payment_status.response', [
@@ -223,39 +247,29 @@ class OrderController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        $request->merge([
+            'payment_method' => strtolower((string) $request->input('payment_method', 'cod')),
+            'shipping_method' => strtolower((string) $request->input('shipping_method', 'standard')),
+            'items' => $this->consolidateOrderItems($request->input('items')),
+        ]);
+
         $data = $request->validate([
-            'user_id' => ['required', 'integer'],
-            'order_code' => ['nullable', 'string', 'max:191'],
             'receiver_name' => ['required', 'string', 'max:255'],
-            'receiver_phone' => ['required', 'string', 'max:20'],
+            'receiver_phone' => ['required', 'string', 'max:20', 'regex:/^(?:\+84|84|0)(?:3|5|7|8|9)\d{8}$/'],
             'receiver_email' => ['nullable', 'email', 'max:191'],
             'shipping_address' => ['required', 'string'],
-            'shipping_method' => ['required', 'string', 'max:50'],
-            'payment_method' => ['nullable', 'string', 'max:50'],
-            'total_amount' => ['nullable', 'numeric', 'min:0'],
-            'discount_amount' => ['nullable', 'numeric', 'min:0'],
-            'shipping_fee' => ['nullable', 'numeric', 'min:0'],
-            'final_amount' => ['nullable', 'numeric', 'min:0'],
-            'status' => ['nullable', 'string', 'max:20'],
-            'payment_status' => ['nullable', 'string', 'max:20'],
-            'cancel_reason' => ['nullable', 'string'],
+            'shipping_method' => ['required', 'string', Rule::in(array_keys(config('order.shipping.methods', ['standard' => 'standard'])))],
+            'payment_method' => ['required', 'string', Rule::in(config('order.payment_methods', ['cod', 'vnpay']))],
             'note' => ['nullable', 'string'],
-            'items' => ['sometimes', 'array'],
-            'items.*.product_variant_id' => ['required_with:items', 'integer'],
-            'items.*.product_id' => ['nullable', 'integer'],
-            'items.*.product_name' => ['required_with:items', 'string', 'max:255'],
-            'items.*.product_image' => ['nullable', 'string', 'max:500'],
-            'items.*.color' => ['nullable', 'string', 'max:50'],
-            'items.*.ram' => ['nullable', 'string', 'max:50'],
-            'items.*.storage' => ['nullable', 'string', 'max:50'],
-            'items.*.price' => ['required_with:items', 'numeric', 'min:0'],
-            'items.*.quantity' => ['required_with:items', 'integer', 'min:1'],
-            'items.*.subtotal' => ['nullable', 'numeric', 'min:0'],
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.product_variant_id' => ['required', 'integer', 'min:1', 'distinct'],
+            'items.*.quantity' => ['required', 'integer', 'min:1', 'max:100'],
             'discounts' => ['sometimes', 'array'],
-            'discounts.*.discount_id' => ['required_with:discounts', 'integer'],
-            'discounts.*.discount_code' => ['required_with:discounts', 'string', 'max:191'],
-            'discounts.*.discount_amount' => ['required_with:discounts', 'numeric', 'min:0'],
+            'discounts.*.discount_id' => ['nullable', 'integer', 'min:1', 'distinct'],
+            'discounts.*.discount_code' => ['nullable', 'string', 'max:191', 'distinct:ignore_case'],
         ]);
+
+        $data['user_id'] = $this->authenticatedUserId($request);
 
         $order = $this->orderService->create($data);
 
@@ -264,6 +278,44 @@ class OrderController extends Controller
             'message' => 'Tao don hang thanh cong',
             'data' => $order,
         ], 201);
+    }
+
+    private function consolidateOrderItems(mixed $items): mixed
+    {
+        if (! is_array($items)) {
+            return $items;
+        }
+
+        $consolidated = [];
+        $positions = [];
+
+        foreach ($items as $item) {
+            if (
+                ! is_array($item)
+                || ! isset($item['product_variant_id'], $item['quantity'])
+                || filter_var($item['product_variant_id'], FILTER_VALIDATE_INT) === false
+                || filter_var($item['quantity'], FILTER_VALIDATE_INT) === false
+            ) {
+                $consolidated[] = $item;
+                continue;
+            }
+
+            $variantId = (int) $item['product_variant_id'];
+            $quantity = (int) $item['quantity'];
+
+            if (! array_key_exists($variantId, $positions)) {
+                $positions[$variantId] = count($consolidated);
+                $item['product_variant_id'] = $variantId;
+                $item['quantity'] = $quantity;
+                $consolidated[] = $item;
+                continue;
+            }
+
+            $position = $positions[$variantId];
+            $consolidated[$position]['quantity'] += $quantity;
+        }
+
+        return array_values($consolidated);
     }
 
     public function requestCancel(Request $request, int|string $id): JsonResponse

@@ -1,7 +1,7 @@
 <?php
 
 return [
-    'token_key' => env('AUTH_TOKEN_KEY', env('AUTH_SERVICE_APP_KEY', env('APP_KEY'))),
+    'token_key' => env('AUTH_TOKEN_KEY'),
 
     'defaults' => [
         'guard' => env('AUTH_GUARD', 'web'),

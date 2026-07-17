@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\InventoryReservationException;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ProductResource;
 use App\Models\Product;
@@ -19,7 +20,7 @@ class ProductController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $products = $this->productService->paginatedList($request->only([
+        $filters = $request->only([
             'page',
             'limit',
             'per_page',
@@ -31,18 +32,18 @@ class ProductController extends Controller
             'search',
             'status',
             'sort',
-        ]));
+        ]);
+
+        $payload = $this->cache->remember(
+            'products:index:'.md5(json_encode($filters)),
+            120,
+            fn (): array => $this->paginatedProductPayload($this->productService->paginatedList($filters)),
+        );
 
         return response()->json([
             'success' => true,
             'message' => 'Success',
-            'data' => $products->items(),
-            'pagination' => [
-                'page' => $products->currentPage(),
-                'limit' => $products->perPage(),
-                'total' => $products->total(),
-                'totalPages' => $products->lastPage(),
-            ],
+            ...$payload,
         ]);
     }
 
@@ -104,9 +105,17 @@ class ProductController extends Controller
 
     public function show(string $slug): JsonResponse
     {
-        $product = $this->productService->findBySlug($slug);
+        $payload = $this->cache->remember(
+            'products:slug:'.sha1($slug),
+            300,
+            function () use ($slug): ?array {
+                $product = $this->productService->findBySlug($slug);
 
-        if (! $product) {
+                return $product ? ProductResource::make($product)->resolve() : null;
+            },
+        );
+
+        if ($payload === null) {
             return response()->json([
                 'success' => false,
                 'message' => 'Khong tim thay san pham',
@@ -115,15 +124,23 @@ class ProductController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => ProductResource::make($product),
+            'data' => $payload,
         ]);
     }
 
     public function showById(int $id): JsonResponse
     {
-        $product = $this->productService->findById($id);
+        $payload = $this->cache->remember(
+            'products:id:'.$id,
+            300,
+            function () use ($id): ?array {
+                $product = $this->productService->findById($id);
 
-        if (! $product) {
+                return $product ? ProductResource::make($product)->resolve() : null;
+            },
+        );
+
+        if ($payload === null) {
             return response()->json([
                 'success' => false,
                 'message' => 'Khong tim thay san pham',
@@ -132,7 +149,7 @@ class ProductController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => ProductResource::make($product),
+            'data' => $payload,
         ]);
     }
 
@@ -159,7 +176,11 @@ class ProductController extends Controller
             ], 404);
         }
 
-        $product = $this->productService->update($product, $this->validatedData($request, false));
+        try {
+            $product = $this->productService->update($product, $this->validatedData($request, false));
+        } catch (InventoryReservationException $exception) {
+            return $this->inventoryConflict($exception);
+        }
         $this->cache->bump();
 
         return response()->json([
@@ -180,7 +201,11 @@ class ProductController extends Controller
             ], 404);
         }
 
-        $this->productService->delete($product);
+        try {
+            $this->productService->delete($product);
+        } catch (InventoryReservationException $exception) {
+            return $this->inventoryConflict($exception);
+        }
         $this->cache->bump();
 
         return response()->json([
@@ -219,14 +244,17 @@ class ProductController extends Controller
             'discount_percent' => ['nullable', 'numeric', 'min:0', 'max:99.99'],
             'status' => ['nullable', 'string', 'max:20'],
             'variants' => ['sometimes', 'array'],
+            'variants.*.id' => ['sometimes', 'integer', 'min:1'],
             'variants.*.color' => ['nullable', 'string', 'max:50'],
             'variants.*.ram' => ['nullable', 'string', 'max:50'],
             'variants.*.storage' => ['nullable', 'string', 'max:50'],
             'variants.*.specifications' => ['nullable', 'array'],
             'variants.*.price' => ['required_with:variants', 'numeric', 'min:0'],
-            'variants.*.sku' => ['required_with:variants', 'string', 'max:191'],
+            'variants.*.sku' => ['required_with:variants', 'string', 'max:191', 'distinct'],
             'variants.*.barcode' => ['nullable', 'string', 'max:191'],
             'variants.*.status' => ['nullable', 'string', 'max:20'],
+            'variants.*.quantity' => ['sometimes', 'integer', 'min:0'],
+            'variants.*.stock' => ['sometimes', 'integer', 'min:0'],
             'images' => ['sometimes', 'array'],
             'images.*.product_variant_id' => ['nullable', 'integer'],
             'images.*.image_url' => ['required_with:images', 'string', 'max:500'],
@@ -243,5 +271,14 @@ class ProductController extends Controller
             'warranty_policy.description' => ['nullable', 'string'],
             'warranty_policy.status' => ['nullable', 'string', 'max:20'],
         ]);
+    }
+
+    private function inventoryConflict(InventoryReservationException $exception): JsonResponse
+    {
+        return response()->json([
+            'success' => false,
+            'message' => $exception->getMessage(),
+            'data' => $exception->context ?: null,
+        ], $exception->httpStatus);
     }
 }

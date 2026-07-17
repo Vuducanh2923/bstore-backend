@@ -3,6 +3,7 @@
 use App\Models\User;
 use App\Services\AuthTokenService;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
@@ -45,6 +46,17 @@ beforeEach(function () {
         $table->string('status', 50)->nullable()->default('active');
         $table->dateTime('last_login_at')->nullable();
         $table->dateTime('created_at')->nullable();
+    });
+
+    Schema::connection('bstore_auth')->create('auth_sessions', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->unsignedBigInteger('user_id')->index();
+        $table->uuid('access_jti')->unique();
+        $table->char('refresh_token_hash', 64)->unique();
+        $table->dateTime('refresh_expires_at')->index();
+        $table->dateTime('last_used_at')->nullable();
+        $table->dateTime('revoked_at')->nullable()->index();
+        $table->timestamps();
     });
 
     Schema::connection('bstore_auth')->create('user_addresses', function (Blueprint $table) {
@@ -181,6 +193,11 @@ test('staff can view customer detail with order history but cannot change status
         ->assertOk()
         ->assertJsonPath('data.customer.id', $customer->id)
         ->assertJsonPath('data.orders.0.order_code', 'ORD99');
+
+    Http::assertSent(fn (Request $request) => $request->hasHeader(
+        'X-Internal-Service-Token',
+        (string) config('services.internal_service_token'),
+    ));
 
     $this->withToken($token)
         ->patchJson("/api/admin/customers/{$customer->id}/status", [

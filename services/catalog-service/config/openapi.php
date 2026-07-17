@@ -22,7 +22,6 @@ return [
         ['name' => 'Categories', 'description' => 'Public active category endpoints.'],
         ['name' => 'Brands', 'description' => 'Public active brand endpoints.'],
         ['name' => 'Products', 'description' => 'Product-specific endpoints.'],
-        ['name' => 'Resources', 'description' => 'Generic CRUD endpoints for supported catalog resources.'],
     ],
     'paths' => [
         '/docs/openapi.json' => [
@@ -517,77 +516,6 @@ return [
                 ],
             ],
         ],
-        '/{resource}' => [
-            'parameters' => [
-                ['$ref' => '#/components/parameters/CatalogResource'],
-            ],
-            'get' => [
-                'tags' => ['Resources'],
-                'summary' => 'List records for a supported resource',
-                'operationId' => 'listCatalogResource',
-                'responses' => [
-                    '200' => ['$ref' => '#/components/responses/ResourceCollection'],
-                    '404' => ['$ref' => '#/components/responses/UnsupportedResource'],
-                ],
-            ],
-            'post' => [
-                'tags' => ['Resources'],
-                'summary' => 'Create a record for a supported resource',
-                'operationId' => 'createCatalogResource',
-                'requestBody' => ['$ref' => '#/components/requestBodies/GenericResource'],
-                'responses' => [
-                    '201' => ['$ref' => '#/components/responses/ResourceRecord'],
-                    '404' => ['$ref' => '#/components/responses/UnsupportedResource'],
-                    '422' => ['$ref' => '#/components/responses/ValidationError'],
-                ],
-            ],
-        ],
-        '/{resource}/{id}' => [
-            'parameters' => [
-                ['$ref' => '#/components/parameters/CatalogResource'],
-                ['$ref' => '#/components/parameters/Id'],
-            ],
-            'get' => [
-                'tags' => ['Resources'],
-                'summary' => 'Show a record for a supported resource',
-                'operationId' => 'showCatalogResource',
-                'responses' => [
-                    '200' => ['$ref' => '#/components/responses/ResourceRecord'],
-                    '404' => ['$ref' => '#/components/responses/NotFound'],
-                ],
-            ],
-            'put' => [
-                'tags' => ['Resources'],
-                'summary' => 'Replace a record for a supported resource',
-                'operationId' => 'replaceCatalogResource',
-                'requestBody' => ['$ref' => '#/components/requestBodies/GenericResource'],
-                'responses' => [
-                    '200' => ['$ref' => '#/components/responses/ResourceRecord'],
-                    '404' => ['$ref' => '#/components/responses/NotFound'],
-                    '422' => ['$ref' => '#/components/responses/ValidationError'],
-                ],
-            ],
-            'patch' => [
-                'tags' => ['Resources'],
-                'summary' => 'Partially update a record for a supported resource',
-                'operationId' => 'updateCatalogResource',
-                'requestBody' => ['$ref' => '#/components/requestBodies/GenericResource'],
-                'responses' => [
-                    '200' => ['$ref' => '#/components/responses/ResourceRecord'],
-                    '404' => ['$ref' => '#/components/responses/NotFound'],
-                    '422' => ['$ref' => '#/components/responses/ValidationError'],
-                ],
-            ],
-            'delete' => [
-                'tags' => ['Resources'],
-                'summary' => 'Delete a record for a supported resource',
-                'operationId' => 'deleteCatalogResource',
-                'responses' => [
-                    '200' => ['$ref' => '#/components/responses/DeleteResponse'],
-                    '404' => ['$ref' => '#/components/responses/NotFound'],
-                ],
-            ],
-        ],
     ],
     'components' => [
         'parameters' => [
@@ -603,29 +531,6 @@ return [
                 'required' => true,
                 'description' => 'Unique product slug generated from the product name.',
                 'schema' => ['type' => 'string', 'example' => 'lenovo-tab-p12-special-edition'],
-            ],
-            'CatalogResource' => [
-                'name' => 'resource',
-                'in' => 'path',
-                'required' => true,
-                'schema' => [
-                    'type' => 'string',
-                    'enum' => [
-                        'banners',
-                        'brands',
-                        'categories',
-                        'products',
-                        'product-variants',
-                        'product_variants',
-                        'inventories',
-                        'inventory-transactions',
-                        'inventory_transactions',
-                        'product-images',
-                        'product_images',
-                        'warranty-policies',
-                        'warranty_policies',
-                    ],
-                ],
             ],
             'PageFilter' => [
                 'name' => 'page',
@@ -763,14 +668,6 @@ return [
                     ],
                 ],
             ],
-            'GenericResource' => [
-                'required' => false,
-                'content' => [
-                    'application/json' => [
-                        'schema' => ['$ref' => '#/components/schemas/GenericResourceRequest'],
-                    ],
-                ],
-            ],
         ],
         'responses' => [
             'OpenApiDocument' => [
@@ -778,22 +675,6 @@ return [
                 'content' => [
                     'application/json' => [
                         'schema' => ['type' => 'object', 'additionalProperties' => true],
-                    ],
-                ],
-            ],
-            'ResourceCollection' => [
-                'description' => 'Records returned',
-                'content' => [
-                    'application/json' => [
-                        'schema' => ['$ref' => '#/components/schemas/ResourceCollectionResponse'],
-                    ],
-                ],
-            ],
-            'ResourceRecord' => [
-                'description' => 'Record returned',
-                'content' => [
-                    'application/json' => [
-                        'schema' => ['$ref' => '#/components/schemas/ResourceRecordResponse'],
                     ],
                 ],
             ],
@@ -807,14 +688,6 @@ return [
             ],
             'NotFound' => [
                 'description' => 'Record not found',
-                'content' => [
-                    'application/json' => [
-                        'schema' => ['$ref' => '#/components/schemas/ErrorResponse'],
-                    ],
-                ],
-            ],
-            'UnsupportedResource' => [
-                'description' => 'Resource is not supported',
                 'content' => [
                     'application/json' => [
                         'schema' => ['$ref' => '#/components/schemas/ErrorResponse'],
@@ -1023,11 +896,6 @@ return [
                     'description' => ['type' => 'string', 'nullable' => true],
                     'status' => ['type' => 'string', 'nullable' => true, 'maxLength' => 20],
                 ],
-            ],
-            'GenericResourceRequest' => [
-                'type' => 'object',
-                'description' => 'Payload is filtered by the target model fillable fields. Use the resource-specific model fields from banners, brands, categories, products, product variants, inventories, inventory transactions, product images, or warranty policies.',
-                'additionalProperties' => true,
             ],
             'Banner' => [
                 'type' => 'object',

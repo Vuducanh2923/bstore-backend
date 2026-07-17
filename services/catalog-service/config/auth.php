@@ -1,6 +1,10 @@
 <?php
 
 return [
+    'token_key' => env('AUTH_TOKEN_KEY'),
+
+    'token_ttl' => env('AUTH_TOKEN_TTL', 1440),
+
     'defaults' => [
         'guard' => env('AUTH_GUARD', 'web'),
         'passwords' => env('AUTH_PASSWORD_BROKER', 'users'),

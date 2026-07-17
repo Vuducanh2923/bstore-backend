@@ -43,4 +43,17 @@ return [
         'url' => env('AUTH_SERVICE_URL'),
     ],
 
+    'catalog' => [
+        'url' => env('CATALOG_SERVICE_URL', 'http://127.0.0.1:8002'),
+    ],
+
+    'payment' => [
+        'url' => env('PAYMENT_SERVICE_URL', 'http://127.0.0.1:8004'),
+    ],
+
+    'internal' => [
+        'token' => env('INTERNAL_SERVICE_TOKEN'),
+        'header' => 'X-Internal-Service-Token',
+    ],
+
 ];

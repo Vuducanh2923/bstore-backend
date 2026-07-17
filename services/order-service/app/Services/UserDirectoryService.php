@@ -3,10 +3,8 @@
 namespace App\Services;
 
 use Illuminate\Http\Client\PendingRequest;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 class UserDirectoryService
@@ -23,9 +21,7 @@ class UserDirectoryService
             return $this->profiles[$userId];
         }
 
-        return $this->profiles[$userId] = $this->profileFromDatabase($userId)
-            ?? $this->profileFromAuthService($userId)
-            ?? [];
+        return $this->profiles[$userId] = $this->profileFromAuthService($userId) ?? [];
     }
 
     public function actor(array $actor): array
@@ -41,68 +37,16 @@ class UserDirectoryService
         ];
     }
 
-    private function profileFromDatabase(int $userId): ?array
-    {
-        try {
-            if (! Schema::connection('bstore_auth')->hasTable('users')) {
-                return null;
-            }
-
-            $query = DB::connection('bstore_auth')
-                ->table('users')
-                ->where('users.id', $userId);
-
-            if (Schema::connection('bstore_auth')->hasTable('roles')) {
-                $query->leftJoin('roles', 'roles.id', '=', 'users.role_id')
-                    ->select([
-                        'users.id',
-                        'users.full_name',
-                        'users.email',
-                        'users.phone',
-                        'roles.name as role',
-                    ]);
-            } else {
-                $query->select([
-                    'users.id',
-                    'users.full_name',
-                    'users.email',
-                    'users.phone',
-                ]);
-            }
-
-            $user = $query->first();
-
-            if (! $user) {
-                return null;
-            }
-
-            return $this->normalizeProfile([
-                'id' => $user->id,
-                'name' => $user->full_name ?? null,
-                'email' => $user->email ?? null,
-                'phone' => $user->phone ?? null,
-                'role' => $user->role ?? null,
-            ]);
-        } catch (Throwable $exception) {
-            Log::debug('Could not fetch user profile from auth database.', [
-                'user_id' => $userId,
-                'error' => $exception->getMessage(),
-            ]);
-
-            return null;
-        }
-    }
-
     private function profileFromAuthService(int $userId): ?array
     {
         $baseUrl = rtrim((string) config('services.auth.url'), '/');
 
-        if ($baseUrl === '') {
+        if ($baseUrl === '' || (string) config('services.internal.token') === '') {
             return null;
         }
 
         try {
-            $response = $this->request()->get("{$baseUrl}/api/users/{$userId}");
+            $response = $this->request()->get("{$baseUrl}/api/internal/users/{$userId}");
         } catch (Throwable $exception) {
             Log::warning('Could not fetch user profile from Auth Service.', [
                 'user_id' => $userId,
@@ -143,6 +87,10 @@ class UserDirectoryService
     private function request(): PendingRequest
     {
         return Http::acceptJson()
+            ->withHeader(
+                (string) config('services.internal.header', 'X-Internal-Service-Token'),
+                (string) config('services.internal.token'),
+            )
             ->connectTimeout((int) config('services.connect_timeout', 2))
             ->timeout((int) config('services.timeout', 5))
             ->retry(2, 100, null, false);

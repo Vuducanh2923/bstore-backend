@@ -2,6 +2,10 @@
 
 namespace App\Services;
 
+use App\Exceptions\InventoryReservationException;
+use App\Models\Inventory;
+use App\Models\InventoryReservation;
+use App\Models\InventoryTransaction;
 use App\Models\Product;
 use App\Models\ProductImage;
 use App\Models\ProductVariant;
@@ -221,8 +225,7 @@ class ProductService
             $product->update($data);
 
             if ($hasVariants) {
-                ProductVariant::where('product_id', $product->id)->delete();
-                $this->syncVariants($product->id, $variants);
+                $this->syncVariants($product->id, $variants, true);
             }
 
             if ($hasImages) {
@@ -242,22 +245,148 @@ class ProductService
 
     public function delete(Product $product): void
     {
-        $this->deleteCloudinaryImages($this->productImagePublicIds($product->id));
+        $variantIds = ProductVariant::query()
+            ->where('product_id', $product->id)
+            ->pluck('id')
+            ->all();
+
+        $this->assertVariantsCanBeRemoved($variantIds);
+        $publicIds = $this->productImagePublicIds($product->id);
 
         DB::connection('bstore_catalog')->transaction(function () use ($product) {
-            ProductVariant::where('product_id', $product->id)->delete();
+            ProductVariant::query()
+                ->where('product_id', $product->id)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->each(fn (ProductVariant $variant) => $this->removeVariant($variant));
             ProductImage::where('product_id', $product->id)->delete();
             $product->delete();
         });
+
+        $this->deleteCloudinaryImages($publicIds, false);
     }
 
-    private function syncVariants(int $productId, array $variants): void
+    private function syncVariants(int $productId, array $variants, bool $removeMissing = false): void
     {
-        foreach ($variants as $variant) {
-            ProductVariant::create([
-                ...$variant,
-                'product_id' => $productId,
-            ]);
+        $existing = ProductVariant::query()
+            ->where('product_id', $productId)
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+        $keptVariantIds = [];
+
+        foreach ($variants as $variantData) {
+            $requestedId = isset($variantData['id']) ? (int) $variantData['id'] : null;
+            $sku = trim((string) ($variantData['sku'] ?? ''));
+            $variant = $requestedId ? $existing->firstWhere('id', $requestedId) : null;
+            $variant ??= $existing->first(fn (ProductVariant $item): bool => (string) $item->sku === $sku);
+            $hasQuantity = array_key_exists('quantity', $variantData) || array_key_exists('stock', $variantData);
+            $quantity = (int) ($variantData['quantity'] ?? $variantData['stock'] ?? 0);
+
+            unset($variantData['id'], $variantData['quantity'], $variantData['stock'], $variantData['inventory']);
+
+            if ($variant) {
+                $variant->fill($variantData);
+                $variant->save();
+            } else {
+                $variant = ProductVariant::create([
+                    ...$variantData,
+                    'product_id' => $productId,
+                ]);
+            }
+
+            $this->ensureInventory($variant, $hasQuantity ? $quantity : null);
+            $keptVariantIds[] = (int) $variant->id;
+        }
+
+        if (! $removeMissing) {
+            return;
+        }
+
+        foreach ($existing->whereNotIn('id', $keptVariantIds) as $variant) {
+            $this->removeVariant($variant);
+        }
+    }
+
+    private function ensureInventory(ProductVariant $variant, ?int $quantity): void
+    {
+        if (! Schema::connection('bstore_catalog')->hasTable('inventories')) {
+            return;
+        }
+
+        $inventory = Inventory::query()->firstOrCreate(
+            ['product_variant_id' => $variant->id],
+            ['quantity' => $quantity ?? 0, 'reserved_quantity' => 0],
+        );
+
+        if ($quantity === null || ! $inventory->wasRecentlyCreated && (int) $inventory->quantity === $quantity) {
+            return;
+        }
+
+        if ($quantity < (int) $inventory->reserved_quantity) {
+            throw new InventoryReservationException(
+                'Variant stock cannot be lower than its reserved quantity',
+                409,
+                ['product_variant_id' => $variant->id],
+            );
+        }
+
+        $inventory->quantity = $quantity;
+        $inventory->save();
+    }
+
+    private function removeVariant(ProductVariant $variant): void
+    {
+        $this->assertVariantsCanBeRemoved([(int) $variant->id]);
+
+        ProductImage::query()->where('product_variant_id', $variant->id)->delete();
+
+        if (Schema::connection('bstore_catalog')->hasTable('inventory_transactions')) {
+            InventoryTransaction::query()->where('product_variant_id', $variant->id)->delete();
+        }
+
+        if (Schema::connection('bstore_catalog')->hasTable('inventory_reservations')) {
+            InventoryReservation::query()->where('product_variant_id', $variant->id)->delete();
+        }
+
+        if (Schema::connection('bstore_catalog')->hasTable('inventories')) {
+            Inventory::query()->where('product_variant_id', $variant->id)->delete();
+        }
+
+        $variant->delete();
+    }
+
+    private function assertVariantsCanBeRemoved(array $variantIds): void
+    {
+        if ($variantIds === []) {
+            return;
+        }
+
+        $blockingReservation = Schema::connection('bstore_catalog')->hasTable('inventory_reservations')
+            ? InventoryReservation::query()->whereIn('product_variant_id', $variantIds)->first()
+            : null;
+
+        if ($blockingReservation) {
+            throw new InventoryReservationException(
+                'Cannot remove a variant with inventory reservation history',
+                409,
+                [
+                    'reference' => $blockingReservation->reference,
+                    'product_variant_id' => $blockingReservation->product_variant_id,
+                    'status' => $blockingReservation->status,
+                ],
+            );
+        }
+
+        if (
+            Schema::connection('bstore_catalog')->hasTable('inventory_transactions')
+            && InventoryTransaction::query()->whereIn('product_variant_id', $variantIds)->exists()
+        ) {
+            throw new InventoryReservationException(
+                'Cannot remove a variant with inventory transaction history',
+                409,
+            );
         }
     }
 

@@ -4,9 +4,12 @@ namespace App\Services;
 
 use App\Models\Invoice;
 use App\Models\Payment;
+use App\Models\PaymentRefund;
 use App\Models\PaymentTransaction;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use RuntimeException;
 
 class PaymentService
 {
@@ -16,61 +19,72 @@ class PaymentService
 
     public function all(array $filters = []): LengthAwarePaginator
     {
-        $perPage = min(
-            self::MAX_PER_PAGE,
-            max(1, (int) ($filters['limit'] ?? $filters['per_page'] ?? self::DEFAULT_PER_PAGE))
-        );
+        $perPage = min(self::MAX_PER_PAGE, max(1, (int) ($filters['limit'] ?? $filters['per_page'] ?? self::DEFAULT_PER_PAGE)));
         $page = max(1, (int) ($filters['page'] ?? 1));
 
         return Payment::query()
-            ->select(['id', 'order_id', 'payment_method', 'payment_provider', 'transaction_code', 'amount', 'status', 'paid_at'])
-            ->with([
-                'transactions:id,payment_id,transaction_code,provider,amount,status',
-                'invoices:id,payment_id,order_id,invoice_code,total_amount,issued_at',
-            ])
+            ->with(['transactions', 'invoices', 'refunds'])
             ->orderByDesc('id')
             ->paginate($perPage, ['*'], 'page', $page);
     }
 
-    public function create(array $data): Payment
+    public function createAuthoritativeCod(int $orderId, float|int|string $amount): Payment
     {
-        return DB::connection('bstore_payment')->transaction(function () use ($data) {
-            $transactions = $data['transactions'] ?? [];
-            unset($data['transactions']);
+        return DB::connection('bstore_payment')->transaction(function () use ($orderId, $amount) {
+            $payment = Payment::query()->where('order_id', $orderId)->lockForUpdate()->first();
 
-            $data['payment_method'] = $data['payment_method'] ?? 'cod';
-            $data['amount'] = $data['amount'] ?? 0;
-            $data['status'] = $data['status'] ?? 'pending';
-
-            if (($data['status'] ?? null) === 'paid' && empty($data['paid_at'])) {
-                $data['paid_at'] = now();
+            if ($payment && in_array($payment->status, ['paid', 'refunded', 'partially_refunded'], true)) {
+                throw new RuntimeException('Don hang da duoc thanh toan');
             }
 
-            $payment = Payment::create($data);
+            $values = [
+                'payment_method' => 'cod',
+                'payment_provider' => 'cod',
+                'transaction_code' => $payment?->transaction_code ?? "COD-{$orderId}",
+                'amount' => $amount,
+                'status' => 'pending',
+                'paid_at' => null,
+            ];
 
-            foreach ($transactions as $transaction) {
-                $transaction['payment_id'] = $payment->id;
-                $transaction['amount'] = $transaction['amount'] ?? $payment->amount;
-
-                PaymentTransaction::create($transaction);
+            if ($payment) {
+                $payment->fill($values)->save();
+            } else {
+                $payment = Payment::create(['order_id' => $orderId] + $values);
             }
 
-            return $payment->fresh(['transactions', 'invoices']);
+            PaymentTransaction::updateOrCreate(
+                ['transaction_code' => $values['transaction_code'], 'provider' => 'cod'],
+                ['payment_id' => $payment->id, 'amount' => $amount, 'status' => 'pending', 'response_data' => ['event' => 'cod_created']],
+            );
+
+            return $payment->fresh(['transactions']) ?? $payment;
         });
     }
 
-    public function createPendingVnpayPayment(int $orderId, float|int|string $amount, string $orderInfo): Payment
+    public function createOrReusePendingVnpayPayment(int $orderId, float|int|string $amount, string $orderInfo, string $createDate): Payment
     {
-        return DB::connection('bstore_payment')->transaction(function () use ($orderId, $amount, $orderInfo) {
-            $payment = Payment::create([
-                'order_id' => $orderId,
+        return DB::connection('bstore_payment')->transaction(function () use ($orderId, $amount, $orderInfo, $createDate) {
+            $payment = Payment::query()->where('order_id', $orderId)->lockForUpdate()->first();
+
+            if ($payment && in_array($payment->status, ['paid', 'refunded', 'partially_refunded'], true)) {
+                throw new RuntimeException('Don hang da duoc thanh toan');
+            }
+
+            $values = [
                 'payment_method' => 'vnpay',
                 'payment_provider' => 'vnpay',
                 'amount' => $amount,
                 'status' => 'pending',
-            ]);
+                'paid_at' => null,
+            ];
 
-            $payment->transaction_code = (string) $payment->id;
+            if ($payment) {
+                $payment->fill($values)->save();
+            } else {
+                $payment = Payment::create(['order_id' => $orderId] + $values);
+            }
+
+            $payment->transaction_code = sprintf('BST%d%s', $payment->id, strtoupper(Str::random(12)));
             $payment->save();
 
             PaymentTransaction::create([
@@ -79,10 +93,7 @@ class PaymentService
                 'provider' => 'vnpay',
                 'amount' => $payment->amount,
                 'status' => 'pending',
-                'response_data' => [
-                    'event' => 'create_payment_url',
-                    'order_info' => $orderInfo,
-                ],
+                'response_data' => ['event' => 'create_payment_url', 'order_info' => $orderInfo, 'vnp_CreateDate' => $createDate],
             ]);
 
             return $payment->fresh() ?? $payment;
@@ -91,66 +102,90 @@ class PaymentService
 
     public function paymentForVnpayTxnRef(string $txnRef): ?Payment
     {
-        $payment = Payment::query()
-            ->select(['id', 'order_id', 'payment_method', 'payment_provider', 'transaction_code', 'amount', 'status', 'paid_at'])
-            ->where('transaction_code', $txnRef)
-            ->orderByDesc('id')
-            ->first();
-
-        if ($payment || ! ctype_digit($txnRef)) {
-            return $payment;
-        }
-
-        return Payment::query()
-            ->select(['id', 'order_id', 'payment_method', 'payment_provider', 'transaction_code', 'amount', 'status', 'paid_at'])
-            ->find((int) $txnRef);
+        return Payment::query()->where('transaction_code', $txnRef)->first();
     }
 
-    public function recordVnpayCallback(Payment $payment, array $payload, bool $successful): Payment
+    public function recordVnpaySyncPending(Payment $payment, array $payload): Payment
     {
-        return DB::connection('bstore_payment')->transaction(function () use ($payment, $payload, $successful) {
-            $alreadyPaid = $payment->status === 'paid';
-            $status = ($successful || $alreadyPaid) ? 'paid' : 'failed';
-            $transactionCode = (string) ($payload['vnp_TransactionNo'] ?? $payload['vnp_TxnRef'] ?? $payment->transaction_code);
-            $amount = isset($payload['vnp_Amount']) ? ((int) $payload['vnp_Amount'] / 100) : $payment->amount;
+        return $this->recordNotification($payment, $payload, 'sync_pending', false);
+    }
 
-            $payment->status = $status;
-            $payment->payment_provider = 'vnpay';
-            $payment->paid_at = $status === 'paid' ? ($payment->paid_at ?? now()) : null;
-            $payment->save();
+    public function recordVnpayPaid(Payment $payment, array $payload): Payment
+    {
+        return $this->recordNotification($payment, $payload, 'paid', true);
+    }
 
-            PaymentTransaction::updateOrCreate(
-                [
-                    'transaction_code' => $transactionCode,
-                    'provider' => 'vnpay',
-                ],
-                [
-                    'payment_id' => $payment->id,
-                    'amount' => $amount,
-                    'status' => $status,
-                    'response_data' => $payload,
-                ],
-            );
-
-            return $payment->fresh() ?? $payment;
-        });
+    public function recordVnpayFailed(Payment $payment, array $payload): Payment
+    {
+        return $this->recordNotification($payment, $payload, 'failed', true);
     }
 
     public function paymentForOrder(int $orderId): ?Payment
     {
+        return Payment::query()->where('order_id', $orderId)->first();
+    }
+
+    public function paidVnpayPaymentForOrder(int $orderId): ?Payment
+    {
         return Payment::query()
-            ->select(['id', 'order_id', 'payment_method', 'payment_provider', 'transaction_code', 'amount', 'status', 'paid_at'])
+            ->with(['transactions', 'refunds'])
             ->where('order_id', $orderId)
-            ->orderByDesc('id')
+            ->where('payment_provider', 'vnpay')
+            ->whereIn('status', ['paid', 'partially_refunded'])
             ->first();
     }
 
     public function invoiceForOrder(int $orderId): ?Invoice
     {
-        return Invoice::query()
-            ->select(['id', 'payment_id', 'order_id', 'invoice_code', 'total_amount', 'issued_at'])
-            ->where('order_id', $orderId)
-            ->orderByDesc('id')
-            ->first();
+        return Invoice::query()->where('order_id', $orderId)->first();
+    }
+
+    public function refundedAmount(Payment $payment): float
+    {
+        return (float) PaymentRefund::query()
+            ->where('payment_id', $payment->id)
+            ->whereIn('status', ['refunded', 'processing'])
+            ->sum('amount');
+    }
+
+    private function recordNotification(Payment $payment, array $payload, string $status, bool $updatePayment): Payment
+    {
+        return DB::connection('bstore_payment')->transaction(function () use ($payment, $payload, $status, $updatePayment) {
+            $payment = Payment::query()->lockForUpdate()->findOrFail($payment->id);
+            $transactionCode = (string) ($payload['vnp_TransactionNo'] ?? '');
+
+            if ($transactionCode === '' || $transactionCode === '0') {
+                $transactionCode = $payment->transaction_code.':callback';
+            }
+            $amount = isset($payload['vnp_Amount']) ? ((int) $payload['vnp_Amount'] / 100) : $payment->amount;
+
+            if ($updatePayment) {
+                if ($status === 'paid' || $payment->status !== 'paid') {
+                    $payment->status = $status;
+                }
+                $payment->payment_provider = 'vnpay';
+                $payment->paid_at = $payment->status === 'paid' ? ($payment->paid_at ?? now()) : null;
+                $payment->save();
+            }
+
+            PaymentTransaction::updateOrCreate(
+                ['transaction_code' => $transactionCode, 'provider' => 'vnpay'],
+                ['payment_id' => $payment->id, 'amount' => $amount, 'status' => $status, 'response_data' => $payload],
+            );
+
+            if ($payment->status === 'paid') {
+                Invoice::firstOrCreate(
+                    ['payment_id' => $payment->id],
+                    [
+                        'order_id' => $payment->order_id,
+                        'invoice_code' => sprintf('INV-%d-%d', $payment->order_id, $payment->id),
+                        'total_amount' => $payment->amount,
+                        'issued_at' => now(),
+                    ],
+                );
+            }
+
+            return $payment->fresh(['transactions', 'invoices']) ?? $payment;
+        });
     }
 }

@@ -3,7 +3,10 @@
 use App\Models\User;
 
 return [
-    'token_key' => env('AUTH_TOKEN_KEY', env('AUTH_SERVICE_APP_KEY', env('APP_KEY'))),
+    'token_key' => env('AUTH_TOKEN_KEY'),
+    'access_token_ttl' => (int) env('AUTH_ACCESS_TOKEN_TTL', 15),
+    'refresh_token_ttl' => (int) env('AUTH_REFRESH_TOKEN_TTL', 43200),
+    'internal_service_token' => env('INTERNAL_SERVICE_TOKEN'),
 
     /*
     |--------------------------------------------------------------------------

@@ -36,6 +36,17 @@ beforeEach(function () {
         $table->string('status', 50)->nullable()->default('active');
     });
 
+    Schema::connection('bstore_auth')->create('auth_sessions', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->unsignedBigInteger('user_id')->index();
+        $table->uuid('access_jti')->unique();
+        $table->char('refresh_token_hash', 64)->unique();
+        $table->dateTime('refresh_expires_at')->index();
+        $table->dateTime('last_used_at')->nullable();
+        $table->dateTime('revoked_at')->nullable()->index();
+        $table->timestamps();
+    });
+
     DB::connection('bstore_auth')->table('roles')->insert([
         ['id' => 1, 'name' => User::ROLE_ADMIN, 'description' => 'Quan tri vien'],
         ['id' => 2, 'name' => User::ROLE_STAFF, 'description' => 'Nhan vien'],

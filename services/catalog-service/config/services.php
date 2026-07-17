@@ -2,6 +2,8 @@
 
 return [
 
+    'internal_service_token' => env('INTERNAL_SERVICE_TOKEN'),
+
     /*
     |--------------------------------------------------------------------------
     | Third Party Services

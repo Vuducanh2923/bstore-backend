@@ -1,0 +1,29 @@
+{
+    "hero_main": [
+        {
+            "title": "Flash Sale 12h",
+            "image_url": "https://res.cloudinary.com/demo/image/upload/c_fill,w_1200,h_420,q_auto,f_auto/sample.jpg",
+            "link": "/deals",
+            "status": true,
+            "sort_order": 1
+        }
+    ],
+    "hero_right_top": [
+        {
+            "title": "Siêu sale công nghệ",
+            "image_url": "https://res.cloudinary.com/demo/image/upload/c_fill,w_600,h_250,q_auto,f_auto/docs/shoes.jpg",
+            "link": "/sale",
+            "status": true,
+            "sort_order": 1
+        }
+    ],
+    "hero_right_bottom": [
+        {
+            "title": "PC gaming và linh kiện mới",
+            "image_url": "https://res.cloudinary.com/demo/image/upload/c_fill,w_600,h_250,q_auto,f_auto/bike.jpg",
+            "link": "/category/pc-gaming",
+            "status": true,
+            "sort_order": 1
+        }
+    ]
+}
