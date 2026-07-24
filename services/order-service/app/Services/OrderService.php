@@ -178,6 +178,9 @@ class OrderService
             }
 
             $order->status = $status;
+            if ($status === Order::STATUS_DELIVERED) {
+                $this->setOrderColumn($order, 'delivered_at', now());
+            }
             $order->save();
 
             $this->histories->record(

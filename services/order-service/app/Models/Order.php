@@ -84,6 +84,7 @@ class Order extends Model
         'status',
         'payment_status',
         'paid_at',
+        'delivered_at',
         'assigned_staff_id',
         'assigned_staff_name',
         'assigned_at',
@@ -105,6 +106,7 @@ class Order extends Model
         'shipping_fee' => 'decimal:2',
         'final_amount' => 'decimal:2',
         'paid_at' => 'datetime',
+        'delivered_at' => 'datetime',
         'assigned_staff_id' => 'integer',
         'assigned_at' => 'datetime',
         'created_at' => 'datetime',
@@ -160,6 +162,11 @@ class Order extends Model
     public function complaints()
     {
         return $this->hasMany(Complaint::class);
+    }
+
+    public function warrantyRequests()
+    {
+        return $this->hasMany(WarrantyRequest::class);
     }
 
     public function statusLabel(): ?string

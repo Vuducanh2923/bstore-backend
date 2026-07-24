@@ -39,6 +39,7 @@ class GatewayController extends Controller
 
     private const ORDER_ADMIN_PATH_PATTERNS = [
         '#^admin/orders(?:/[0-9]+)?(?:/(?:assign|status|cancel/(?:approve|reject)))?$#',
+        '#^admin/warranty-requests(?:/[0-9]+)?(?:/(?:approve|reject|processing|complete))?$#',
     ];
 
     private const ROUTE_MAP = [

@@ -108,6 +108,26 @@ test('admin order routes are forwarded to order service', function () {
         && $request->hasHeader('authorization', 'Bearer admin-token'));
 });
 
+test('customer and admin warranty routes are forwarded to order service', function () {
+    Http::fake([
+        'http://auth.test/api/internal/auth/introspect' => Http::response(['data' => ['active' => true]]),
+        'http://order.test/api/customer/warranty-requests' => Http::response(['success' => true, 'data' => []]),
+        'http://order.test/api/admin/warranty-requests/5/approve' => Http::response([
+            'success' => true, 'data' => ['id' => 5, 'status' => 'approved'],
+        ]),
+    ]);
+
+    $this->withHeader('Authorization', 'Bearer customer-token')
+        ->getJson('/api/customer/warranty-requests')
+        ->assertOk();
+    $this->withHeader('Authorization', 'Bearer admin-token')
+        ->putJson('/api/admin/warranty-requests/5/approve')
+        ->assertOk();
+
+    Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/customer/warranty-requests');
+    Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/admin/warranty-requests/5/approve');
+});
+
 test('cart detail routes are forwarded to order service', function () {
     Http::fake([
         'http://order.test/api/carts/10' => Http::response([

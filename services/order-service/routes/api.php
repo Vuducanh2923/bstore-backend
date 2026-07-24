@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\CartController;
 use App\Http\Controllers\Api\ComplaintController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\RefundController;
+use App\Http\Controllers\Api\WarrantyController;
 use App\Http\Controllers\SwaggerController;
 use Illuminate\Support\Facades\Route;
 
@@ -13,6 +14,10 @@ Route::middleware('customer.token')->prefix('customer')->group(function () {
     Route::get('/orders', [OrderController::class, 'customerOrders']);
     Route::get('/orders/{id}', [OrderController::class, 'customerOrderDetail'])->whereNumber('id');
     Route::post('/orders/{id}/cancel', [OrderController::class, 'requestCancel'])->whereNumber('id');
+    Route::get('/warranty-requests', [WarrantyController::class, 'customerIndex']);
+    Route::post('/warranty-requests', [WarrantyController::class, 'store']);
+    Route::get('/warranty-requests/{id}', [WarrantyController::class, 'customerShow'])->whereNumber('id');
+    Route::put('/warranty-requests/{id}/cancel', [WarrantyController::class, 'cancel'])->whereNumber('id');
 });
 
 Route::middleware('customer.token')->group(function () {
@@ -34,6 +39,12 @@ Route::middleware('admin.token')->prefix('admin')->group(function () {
     Route::patch('/orders/{id}/status', [OrderController::class, 'updateAdminOrderStatus'])->whereNumber('id');
     Route::put('/orders/{id}/cancel/approve', [OrderController::class, 'approveCancel'])->whereNumber('id');
     Route::put('/orders/{id}/cancel/reject', [OrderController::class, 'rejectCancel'])->whereNumber('id');
+    Route::get('/warranty-requests', [WarrantyController::class, 'adminIndex']);
+    Route::get('/warranty-requests/{id}', [WarrantyController::class, 'adminShow'])->whereNumber('id');
+    Route::put('/warranty-requests/{id}/approve', [WarrantyController::class, 'approve'])->whereNumber('id');
+    Route::put('/warranty-requests/{id}/reject', [WarrantyController::class, 'reject'])->whereNumber('id');
+    Route::put('/warranty-requests/{id}/processing', [WarrantyController::class, 'processing'])->whereNumber('id');
+    Route::put('/warranty-requests/{id}/complete', [WarrantyController::class, 'complete'])->whereNumber('id');
 });
 
 Route::middleware('user.token')->group(function () {

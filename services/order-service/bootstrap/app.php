@@ -1,5 +1,6 @@
 <?php
 
+use App\Exceptions\WarrantyConflictException;
 use App\Http\Middleware\AdminToken;
 use App\Http\Middleware\CustomerToken;
 use App\Http\Middleware\InternalService;
@@ -30,6 +31,18 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->render(function (WarrantyConflictException $exception, Request $request) {
+            if (! $request->is('api/*')) {
+                return null;
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => $exception->getMessage(),
+                'errors' => (object) [],
+            ], 409);
+        });
+
         $exceptions->render(function (ValidationException $exception, Request $request) {
             if (! $request->is('api/*')) {
                 return null;

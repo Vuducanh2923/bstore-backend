@@ -19,6 +19,7 @@ return [
         ['name' => 'Documentation', 'description' => 'OpenAPI document endpoint.'],
         ['name' => 'Carts', 'description' => 'Cart-specific endpoints.'],
         ['name' => 'Orders', 'description' => 'Order-specific endpoints.'],
+        ['name' => 'Warranty', 'description' => 'Customer and administrator warranty request workflow.'],
     ],
     'paths' => [
         '/docs/openapi.json' => [
@@ -29,6 +30,73 @@ return [
                 'responses' => [
                     '200' => ['$ref' => '#/components/responses/OpenApiDocument'],
                 ],
+            ],
+        ],
+        '/customer/warranty-requests' => [
+            'get' => [
+                'tags' => ['Warranty'], 'summary' => 'List current customer warranty requests',
+                'security' => [['bearerAuth' => []]], 'responses' => ['200' => ['description' => 'Warranty request list']],
+            ],
+            'post' => [
+                'tags' => ['Warranty'], 'summary' => 'Submit a warranty request',
+                'security' => [['bearerAuth' => []]],
+                'requestBody' => ['required' => true, 'content' => ['application/json' => ['schema' => ['$ref' => '#/components/schemas/WarrantyCreateRequest']]]],
+                'responses' => ['201' => ['description' => 'Warranty request created'], '409' => ['description' => 'Active request already exists'], '422' => ['$ref' => '#/components/responses/ValidationError']],
+            ],
+        ],
+        '/customer/warranty-requests/{id}' => [
+            'get' => [
+                'tags' => ['Warranty'], 'summary' => 'Get own warranty request',
+                'security' => [['bearerAuth' => []]], 'parameters' => [['$ref' => '#/components/parameters/Id']],
+                'responses' => ['200' => ['description' => 'Warranty request detail'], '403' => ['description' => 'Not owner'], '404' => ['$ref' => '#/components/responses/NotFound']],
+            ],
+        ],
+        '/customer/warranty-requests/{id}/cancel' => [
+            'put' => [
+                'tags' => ['Warranty'], 'summary' => 'Cancel a pending warranty request',
+                'security' => [['bearerAuth' => []]], 'parameters' => [['$ref' => '#/components/parameters/Id']],
+                'responses' => ['200' => ['description' => 'Warranty request cancelled'], '409' => ['description' => 'Invalid status transition']],
+            ],
+        ],
+        '/admin/warranty-requests' => [
+            'get' => [
+                'tags' => ['Warranty'], 'summary' => 'List all warranty requests',
+                'security' => [['bearerAuth' => []]], 'responses' => ['200' => ['description' => 'Paginated warranty request list']],
+            ],
+        ],
+        '/admin/warranty-requests/{id}' => [
+            'get' => [
+                'tags' => ['Warranty'], 'summary' => 'Get warranty request detail for staff',
+                'security' => [['bearerAuth' => []]], 'parameters' => [['$ref' => '#/components/parameters/Id']],
+                'responses' => ['200' => ['description' => 'Warranty request detail'], '404' => ['$ref' => '#/components/responses/NotFound']],
+            ],
+        ],
+        '/admin/warranty-requests/{id}/approve' => [
+            'put' => [
+                'tags' => ['Warranty'], 'summary' => 'Approve a pending warranty request',
+                'security' => [['bearerAuth' => []]], 'parameters' => [['$ref' => '#/components/parameters/Id']],
+                'responses' => ['200' => ['description' => 'Approved'], '409' => ['description' => 'Invalid status transition']],
+            ],
+        ],
+        '/admin/warranty-requests/{id}/reject' => [
+            'put' => [
+                'tags' => ['Warranty'], 'summary' => 'Reject a pending warranty request',
+                'security' => [['bearerAuth' => []]], 'parameters' => [['$ref' => '#/components/parameters/Id']],
+                'responses' => ['200' => ['description' => 'Rejected'], '409' => ['description' => 'Invalid status transition'], '422' => ['$ref' => '#/components/responses/ValidationError']],
+            ],
+        ],
+        '/admin/warranty-requests/{id}/processing' => [
+            'put' => [
+                'tags' => ['Warranty'], 'summary' => 'Move an approved request to processing',
+                'security' => [['bearerAuth' => []]], 'parameters' => [['$ref' => '#/components/parameters/Id']],
+                'responses' => ['200' => ['description' => 'Processing'], '409' => ['description' => 'Invalid status transition']],
+            ],
+        ],
+        '/admin/warranty-requests/{id}/complete' => [
+            'put' => [
+                'tags' => ['Warranty'], 'summary' => 'Complete a processing warranty request',
+                'security' => [['bearerAuth' => []]], 'parameters' => [['$ref' => '#/components/parameters/Id']],
+                'responses' => ['200' => ['description' => 'Completed'], '409' => ['description' => 'Invalid status transition']],
             ],
         ],
         '/carts' => [
@@ -100,6 +168,13 @@ return [
         ],
     ],
     'components' => [
+        'securitySchemes' => [
+            'bearerAuth' => [
+                'type' => 'http',
+                'scheme' => 'bearer',
+                'bearerFormat' => 'JWT',
+            ],
+        ],
         'parameters' => [
             'Id' => [
                 'name' => 'id',
@@ -145,6 +220,16 @@ return [
             ],
         ],
         'schemas' => [
+            'WarrantyCreateRequest' => [
+                'type' => 'object',
+                'required' => ['order_id', 'order_item_id', 'reason'],
+                'properties' => [
+                    'order_id' => ['type' => 'integer', 'minimum' => 1],
+                    'order_item_id' => ['type' => 'integer', 'minimum' => 1],
+                    'reason' => ['type' => 'string', 'maxLength' => 1000],
+                    'description' => ['type' => 'string', 'nullable' => true, 'maxLength' => 5000],
+                ],
+            ],
             'CartCreateRequest' => [
                 'type' => 'object',
                 'required' => ['user_id'],
