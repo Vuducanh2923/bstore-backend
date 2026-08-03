@@ -78,3 +78,53 @@ test('internal payment endpoints fail closed without service credential', functi
     $this->getJson('/api/internal/orders/123/payment')->assertUnauthorized();
     $this->postJson('/api/internal/payments/123/refunds', [])->assertUnauthorized();
 });
+
+test('internal status endpoint creates and idempotently updates COD payment', function () {
+    $headers = ['X-Internal-Service-Token' => 'internal-secret'];
+    $payload = ['payment_status' => 'paid', 'payment_method' => 'cod', 'amount' => 125000];
+
+    $first = $this->withHeaders($headers)->patchJson('/api/internal/orders/321/payment-status', $payload)
+        ->assertOk()
+        ->assertJsonPath('data.status', 'paid');
+    $paidAt = $first->json('data.paid_at');
+
+    $this->withHeaders($headers)->patchJson('/api/internal/orders/321/payment-status', $payload)
+        ->assertOk()
+        ->assertJsonPath('data.paid_at', $paidAt);
+
+    expect(DB::connection('bstore_payment')->table('payments')->where('order_id', 321)->count())->toBe(1);
+
+    $this->withHeaders($headers)->patchJson('/api/internal/orders/321/payment-status', array_merge($payload, ['payment_status' => 'unpaid']))
+        ->assertUnprocessable();
+
+    $this->assertDatabaseHas('payments', [
+        'order_id' => 321,
+        'status' => 'paid',
+    ], 'bstore_payment');
+});
+
+test('internal status endpoint only confirms VNPay paid after an authoritative success', function () {
+    DB::connection('bstore_payment')->table('payments')->insert([
+        'order_id' => 456,
+        'payment_method' => 'vnpay',
+        'payment_provider' => 'vnpay',
+        'transaction_code' => 'VNP456',
+        'amount' => 125000,
+        'status' => 'pending',
+    ]);
+    $payload = ['payment_status' => 'paid', 'payment_method' => 'vnpay', 'amount' => 125000];
+
+    $this->withHeader('X-Internal-Service-Token', 'internal-secret')
+        ->patchJson('/api/internal/orders/456/payment-status', $payload)
+        ->assertUnprocessable();
+
+    DB::connection('bstore_payment')->table('payments')->where('order_id', 456)->update([
+        'status' => 'paid',
+        'paid_at' => '2026-08-04 01:00:00',
+    ]);
+
+    $this->withHeader('X-Internal-Service-Token', 'internal-secret')
+        ->patchJson('/api/internal/orders/456/payment-status', $payload)
+        ->assertOk()
+        ->assertJsonPath('data.status', 'paid');
+});

@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Throwable;
 
 class OrderService
@@ -36,6 +37,7 @@ class OrderService
         private readonly OrderNotificationService $notifications,
         private readonly UserDirectoryService $users,
         private readonly OrderHistoryService $histories,
+        private readonly PaymentStatusClient $paymentStatuses,
     ) {}
 
     public function all(): Collection
@@ -231,8 +233,12 @@ class OrderService
 
             $order->payment_status = $newPaymentStatus;
 
-            if (Schema::connection('bstore_order')->hasColumn('orders', 'paid_at') && $newPaymentStatus === 'paid') {
-                $order->setAttribute('paid_at', $data['paid_at'] ?? $order->getAttribute('paid_at') ?? now());
+            if (Schema::connection('bstore_order')->hasColumn('orders', 'paid_at')) {
+                if ($newPaymentStatus === 'paid') {
+                    $order->setAttribute('paid_at', $data['paid_at'] ?? $order->getAttribute('paid_at') ?? now());
+                } elseif (in_array($newPaymentStatus, ['unpaid', 'pending', 'failed'], true)) {
+                    $order->setAttribute('paid_at', null);
+                }
             }
 
             $order->save();
@@ -247,6 +253,91 @@ class OrderService
                     "Payment: {$oldPaymentStatus} -> {$newPaymentStatus}",
                 );
             }
+
+            return $order->fresh() ?? $order;
+        });
+    }
+
+    public function updateAdminPaymentStatus(int $orderId, string $newPaymentStatus, array $actor, ?string $note = null): ?Order
+    {
+        $order = Order::query()->find($orderId);
+
+        if (! $order) {
+            return null;
+        }
+
+        $oldPaymentStatus = strtolower((string) $order->payment_status);
+        $newPaymentStatus = strtolower($newPaymentStatus);
+
+        if ($oldPaymentStatus === $newPaymentStatus) {
+            return $order;
+        }
+
+        if ($oldPaymentStatus === 'paid') {
+            throw ValidationException::withMessages([
+                'payment_status' => ['Don hang da thanh toan khong the chuyen ve chua thanh toan.'],
+            ]);
+        }
+
+        if ($this->isCashOnDelivery($order)) {
+            if (! in_array($newPaymentStatus, ['unpaid', 'paid'], true)) {
+                throw ValidationException::withMessages([
+                    'payment_status' => ['Don hang COD chi cho phep trang thai unpaid hoac paid.'],
+                ]);
+            }
+        } elseif ($newPaymentStatus === 'refunded') {
+            throw ValidationException::withMessages([
+                'payment_status' => ['Trang thai refunded phai duoc cap nhat boi luong hoan tien.'],
+            ]);
+        }
+
+        if (strtolower((string) $order->status) === Order::STATUS_CANCELLED && $newPaymentStatus === 'paid') {
+            throw ValidationException::withMessages([
+                'payment_status' => ['Khong the xac nhan thanh toan cho don hang da huy'],
+            ]);
+        }
+
+        $payment = $this->paymentStatuses->synchronize($order, $newPaymentStatus);
+
+        return DB::connection('bstore_order')->transaction(function () use ($orderId, $oldPaymentStatus, $newPaymentStatus, $actor, $note, $payment) {
+            $order = Order::query()->lockForUpdate()->find($orderId);
+
+            if (! $order) {
+                return null;
+            }
+
+            if (strtolower((string) $order->payment_status) !== $oldPaymentStatus) {
+                throw new HttpException(409, 'Trang thai thanh toan da duoc cap nhat boi yeu cau khac.');
+            }
+
+            if ($newPaymentStatus === 'paid') {
+                $this->commitInventory($order);
+            }
+
+            $order->payment_status = $newPaymentStatus;
+
+            if (Schema::connection('bstore_order')->hasColumn('orders', 'paid_at')) {
+                if ($newPaymentStatus === 'paid') {
+                    $order->setAttribute('paid_at', $payment['paid_at'] ?? $order->getAttribute('paid_at') ?? now());
+                } elseif (in_array($newPaymentStatus, ['unpaid', 'pending', 'failed'], true)) {
+                    $order->setAttribute('paid_at', null);
+                }
+            }
+
+            $order->save();
+            $actor = $this->users->actor($actor);
+            $historyNote = "Payment: {$oldPaymentStatus} -> {$newPaymentStatus}";
+            if ($note !== null && trim($note) !== '') {
+                $historyNote .= '. '.trim($note);
+            }
+            $this->histories->record(
+                (int) $order->id,
+                'payment_status_updated',
+                $oldPaymentStatus,
+                $newPaymentStatus,
+                $actor,
+                $historyNote,
+            );
 
             return $order->fresh() ?? $order;
         });

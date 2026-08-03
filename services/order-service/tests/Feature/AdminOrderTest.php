@@ -3,6 +3,7 @@
 use App\Services\AuthTokenService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 
@@ -21,12 +22,28 @@ beforeEach(function () {
             'prefix' => '',
             'foreign_key_constraints' => false,
         ],
+        'services.payment.url' => 'http://payment.test',
+        'services.internal.token' => 'internal-secret',
+    ]);
+
+    Http::fake([
+        'http://payment.test/api/internal/orders/*/payment-status' => function ($request) {
+            $status = $request->data()['payment_status'];
+
+            return Http::response([
+                'success' => true,
+                'data' => [
+                    'status' => $status,
+                    'paid_at' => $status === 'paid' ? '2026-08-04T01:00:00+07:00' : null,
+                ],
+            ]);
+        },
     ]);
 
     DB::purge('bstore_order');
     DB::purge('bstore_catalog');
 
-    foreach (['order_items', 'orders'] as $table) {
+    foreach (['order_histories', 'order_items', 'orders'] as $table) {
         Schema::connection('bstore_order')->dropIfExists($table);
     }
 
@@ -70,6 +87,18 @@ beforeEach(function () {
         $table->decimal('price', 15, 2)->default(0);
         $table->unsignedInteger('quantity')->default(1);
         $table->decimal('subtotal', 15, 2)->default(0);
+    });
+
+    Schema::connection('bstore_order')->create('order_histories', function (Blueprint $table) {
+        $table->id();
+        $table->unsignedBigInteger('order_id')->index();
+        $table->string('action', 50)->index();
+        $table->string('old_status', 20)->nullable();
+        $table->string('new_status', 20)->nullable();
+        $table->unsignedBigInteger('staff_id')->nullable();
+        $table->string('staff_name', 191)->nullable();
+        $table->text('note')->nullable();
+        $table->dateTime('created_at')->nullable();
     });
 
     Schema::connection('bstore_catalog')->create('product_variants', function (Blueprint $table) {
@@ -249,19 +278,73 @@ test('staff can access and update admin orders', function () {
         ->assertJsonPath('data.status', 'processing');
 });
 
-test('admin and staff can confirm an order payment as paid', function (string $role) {
+test('admin can confirm a COD order payment as paid', function () {
     $orderId = insertAdminOrderForTest(['status' => 'delivered', 'payment_status' => 'unpaid']);
 
-    $response = $this->withToken(adminOrderTokenForTest($role))
+    $response = $this->withToken(adminOrderTokenForTest())
         ->patchJson("/api/admin/orders/{$orderId}/payment-status", ['payment_status' => 'paid'])
         ->assertOk()
         ->assertJsonPath('success', true)
         ->assertJsonPath('data.id', $orderId)
-        ->assertJsonPath('data.status', 'delivered')
+        ->assertJsonPath('data.payment_method', 'cod')
         ->assertJsonPath('data.payment_status', 'paid');
 
     expect($response->json('data.paid_at'))->not->toBeNull();
-})->with(['ADMIN', 'STAFF']);
+    $this->assertDatabaseHas('order_histories', [
+        'order_id' => $orderId,
+        'action' => 'payment_status_updated',
+        'old_status' => 'unpaid',
+        'new_status' => 'paid',
+        'staff_id' => 1,
+    ], 'bstore_order');
+});
+
+test('staff cannot update payment status without a specific permission mechanism', function () {
+    $orderId = insertAdminOrderForTest(['payment_status' => 'unpaid']);
+
+    $this->withToken(adminOrderTokenForTest('STAFF'))
+        ->patchJson("/api/admin/orders/{$orderId}/payment-status", ['payment_status' => 'paid'])
+        ->assertForbidden();
+
+    Http::assertNothingSent();
+});
+
+test('a completed COD order can be confirmed as paid', function () {
+    $orderId = insertAdminOrderForTest(['status' => 'completed', 'payment_status' => 'unpaid']);
+
+    $this->withToken(adminOrderTokenForTest())
+        ->patchJson("/api/admin/orders/{$orderId}/payment-status", ['payment_status' => 'paid'])
+        ->assertOk()
+        ->assertJsonPath('data.payment_status', 'paid');
+});
+
+test('paid COD cannot return to unpaid', function () {
+    $orderId = insertAdminOrderForTest(['payment_status' => 'paid']);
+    DB::connection('bstore_order')->table('orders')->where('id', $orderId)->update(['paid_at' => now()]);
+
+    $this->withToken(adminOrderTokenForTest())
+        ->patchJson("/api/admin/orders/{$orderId}/payment-status", ['payment_status' => 'unpaid'])
+        ->assertUnprocessable();
+
+    $this->assertDatabaseHas('orders', [
+        'id' => $orderId,
+        'payment_status' => 'paid',
+    ], 'bstore_order');
+    Http::assertNothingSent();
+});
+
+test('payment status validation is strict', function (array $payload) {
+    $orderId = insertAdminOrderForTest(['payment_status' => 'unpaid']);
+
+    $this->withToken(adminOrderTokenForTest())
+        ->patchJson("/api/admin/orders/{$orderId}/payment-status", $payload)
+        ->assertUnprocessable();
+})->with([
+    'missing' => [[]],
+    'empty' => [['payment_status' => '']],
+    'unknown' => [['payment_status' => 'complete']],
+    'wrong case' => [['payment_status' => 'PAID']],
+]);
 
 test('confirming a paid order is idempotent', function () {
     $orderId = insertAdminOrderForTest(['payment_status' => 'paid']);
@@ -274,6 +357,30 @@ test('confirming a paid order is idempotent', function () {
         ->assertOk()
         ->assertJsonPath('data.payment_status', 'paid')
         ->assertJsonPath('data.paid_at', '2026-08-03T10:00:00.000000Z');
+
+    expect(DB::connection('bstore_order')->table('order_histories')->where('order_id', $orderId)->count())->toBe(0);
+    Http::assertNothingSent();
+});
+
+test('concurrent payment status changes return conflict', function () {
+    $orderId = insertAdminOrderForTest(['payment_status' => 'unpaid']);
+    Http::fake([
+        'http://payment.test/api/internal/orders/*/payment-status' => function ($request) use ($orderId) {
+            DB::connection('bstore_order')->table('orders')->where('id', $orderId)->update([
+                'payment_status' => 'paid',
+            ]);
+
+            return Http::response([
+                'success' => true,
+                'data' => ['status' => $request->data()['payment_status'], 'paid_at' => now()->toISOString()],
+            ]);
+        },
+    ]);
+
+    $this->withToken(adminOrderTokenForTest())
+        ->patchJson("/api/admin/orders/{$orderId}/payment-status", ['payment_status' => 'paid'])
+        ->assertConflict()
+        ->assertJsonPath('message', 'Trang thai thanh toan da duoc cap nhat boi yeu cau khac.');
 });
 
 test('a cancelled order cannot be confirmed as paid', function () {

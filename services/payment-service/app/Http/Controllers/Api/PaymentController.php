@@ -10,6 +10,7 @@ use App\Services\VnpayService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 use RuntimeException;
 use Throwable;
 
@@ -54,6 +55,36 @@ class PaymentController extends Controller
         return $invoice
             ? response()->json(['success' => true, 'data' => $invoice])
             : response()->json(['success' => false, 'message' => 'Khong tim thay hoa don', 'data' => null], 404);
+    }
+
+    public function synchronizeOrderPaymentStatus(Request $request, int|string $orderId): JsonResponse
+    {
+        $data = $request->validate([
+            'payment_status' => ['required', Rule::in(['unpaid', 'pending', 'paid', 'failed', 'refunded'])],
+            'payment_method' => ['required', 'string', 'max:50'],
+            'amount' => ['required', 'numeric', 'min:0'],
+        ]);
+
+        try {
+            $payment = $this->payments->synchronizeOrderStatus(
+                (int) $orderId,
+                $data['payment_method'],
+                $data['amount'],
+                $data['payment_status'],
+            );
+        } catch (RuntimeException $exception) {
+            return $this->domainError($exception);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Dong bo trang thai thanh toan thanh cong.',
+            'data' => [
+                'order_id' => $payment->order_id,
+                'status' => $data['payment_status'],
+                'paid_at' => $payment->paid_at,
+            ],
+        ]);
     }
 
     public function store(Request $request): JsonResponse

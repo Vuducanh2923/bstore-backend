@@ -125,6 +125,61 @@ class PaymentService
         return Payment::query()->where('order_id', $orderId)->first();
     }
 
+    public function synchronizeOrderStatus(int $orderId, string $method, float|int|string $amount, string $status): Payment
+    {
+        return DB::connection('bstore_payment')->transaction(function () use ($orderId, $method, $amount, $status) {
+            $payment = Payment::query()->where('order_id', $orderId)->lockForUpdate()->first();
+            $method = strtolower($method);
+            $status = strtolower($status);
+            $isCod = in_array($method, ['cod', 'cash', 'cash_on_delivery'], true);
+
+            if (! $isCod) {
+                if (! $payment) {
+                    throw new RuntimeException('Khong the cap nhat thanh toan online khi chua co giao dich.');
+                }
+
+                if ($status === 'paid' && ! in_array($payment->status, ['paid', 'partially_refunded'], true)) {
+                    throw new RuntimeException('Khong the xac nhan thu cong thanh toan VNPay khi chua co giao dich thanh cong.');
+                }
+
+                if ($status !== 'paid' && strtolower((string) $payment->status) !== $status) {
+                    throw new RuntimeException('Trang thai thanh toan online phai theo ket qua giao dich tu Payment Service.');
+                }
+
+                return $payment;
+            }
+
+            if (! in_array($status, ['unpaid', 'paid'], true)) {
+                throw new RuntimeException('Don hang COD chi cho phep trang thai unpaid hoac paid.');
+            }
+
+            if ($payment && strtolower((string) $payment->status) === 'paid' && $status !== 'paid') {
+                throw new RuntimeException('Don hang da thanh toan khong the chuyen ve chua thanh toan.');
+            }
+
+            if (! $payment) {
+                $payment = Payment::create([
+                    'order_id' => $orderId,
+                    'payment_method' => 'cod',
+                    'payment_provider' => 'cod',
+                    'transaction_code' => "COD-{$orderId}",
+                    'amount' => $amount,
+                    'status' => $status,
+                    'paid_at' => $status === 'paid' ? now() : null,
+                ]);
+            } elseif (strtolower((string) $payment->status) !== $status) {
+                $payment->status = $status;
+                $payment->payment_method = 'cod';
+                $payment->payment_provider = 'cod';
+                $payment->amount = $amount;
+                $payment->paid_at = $status === 'paid' ? ($payment->paid_at ?? now()) : null;
+                $payment->save();
+            }
+
+            return $payment->fresh() ?? $payment;
+        });
+    }
+
     public function paidVnpayPaymentForOrder(int $orderId): ?Payment
     {
         return Payment::query()

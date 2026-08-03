@@ -17,6 +17,7 @@ Route::middleware('customer.token')->group(function () {
 Route::middleware('admin.token')->get('/payments', [PaymentController::class, 'index']);
 
 Route::middleware('internal.service')->prefix('internal')->group(function () {
+    Route::patch('/orders/{orderId}/payment-status', [PaymentController::class, 'synchronizeOrderPaymentStatus'])->whereNumber('orderId');
     Route::get('/orders/{orderId}/payment', [PaymentController::class, 'paymentByOrder'])->whereNumber('orderId');
     Route::get('/orders/{orderId}/invoice', [PaymentController::class, 'invoiceByOrder'])->whereNumber('orderId');
     Route::post('/payments/{orderId}/refunds', [PaymentController::class, 'refund'])->whereNumber('orderId');

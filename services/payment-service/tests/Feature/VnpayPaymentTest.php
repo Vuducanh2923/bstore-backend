@@ -138,18 +138,24 @@ test('a retry reuses one payment row and rotates the VNPAY transaction reference
         ->and($first)->not->toBe($second);
 });
 
-test('browser return verifies but never settles a pending payment', function () {
+test('signed browser return settles payment order and cart when IPN is unreachable', function () {
+    Http::fake([
+        'http://order.test/api/internal/orders/123/payment-status' => Http::response(['success' => true, 'data' => ['updated' => true]]),
+        'http://order.test/api/internal/orders/123/cart/clear' => Http::response(['success' => true, 'data' => ['deleted_items' => 2]]),
+    ]);
     $paymentId = paymentCreateVnpayPayment('RETURN-ONLY', 50000);
     $payload = paymentSignedCallback('RETURN-ONLY', 50000, '777');
 
     $this->getJson('/api/payments/vnpay/return?'.http_build_query($payload))
         ->assertOk()
-        ->assertJsonPath('success', false)
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('data.successful', true)
         ->assertJsonPath('data.provider_successful', true)
-        ->assertJsonPath('data.payment_status', 'pending');
+        ->assertJsonPath('data.payment_status', 'paid')
+        ->assertJsonPath('data.order_id', 123);
 
-    expect(DB::connection('bstore_payment')->table('payments')->find($paymentId)->status)->toBe('pending');
-    Http::assertNothingSent();
+    expect(DB::connection('bstore_payment')->table('payments')->find($paymentId)->status)->toBe('paid');
+    Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/internal/orders/123/cart/clear');
 });
 
 test('IPN settles Order then Payment then Cart and is idempotent', function () {

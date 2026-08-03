@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Services\OrderService;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -116,11 +117,23 @@ class OrderController extends Controller
 
     public function updateAdminOrderPaymentStatus(Request $request, int|string $id): JsonResponse
     {
+        $actor = $this->authenticatedActor($request);
+
+        if (strtoupper((string) ($actor['role'] ?? '')) !== 'ADMIN') {
+            throw new AuthorizationException('Khong co quyen cap nhat trang thai thanh toan');
+        }
+
         $data = $request->validate([
-            'payment_status' => ['required', 'string', Rule::in(['paid'])],
+            'payment_status' => ['required', Rule::in(array_keys(Order::PAYMENT_STATUS_LABELS))],
+            'note' => ['nullable', 'string', 'max:2000'],
         ]);
 
-        $order = $this->orderService->updatePaymentStatus((int) $id, $data);
+        $order = $this->orderService->updateAdminPaymentStatus(
+            (int) $id,
+            $data['payment_status'],
+            $actor,
+            $data['note'] ?? null,
+        );
 
         if (! $order) {
             return response()->json([
@@ -132,10 +145,11 @@ class OrderController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Cap nhat trang thai thanh toan don hang thanh cong',
+            'message' => 'Cap nhat trang thai thanh toan thanh cong.',
             'data' => [
                 'id' => $order->id,
-                'status' => $order->status,
+                'order_code' => $order->order_code,
+                'payment_method' => $order->getAttribute('payment_method'),
                 'payment_status' => $order->payment_status,
                 'paid_at' => $order->getAttribute('paid_at'),
             ],

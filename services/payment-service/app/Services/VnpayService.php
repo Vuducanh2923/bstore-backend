@@ -55,7 +55,7 @@ class VnpayService
         ];
     }
 
-    /** The browser return URL is display-only; it never changes local state. */
+    /** A signed browser return is also a safe fallback when VNPAY cannot reach the configured IPN URL. */
     public function handleReturn(array $payload): array
     {
         $this->ensureConfigured();
@@ -70,11 +70,21 @@ class VnpayService
             return ['verified' => true, 'successful' => false, 'payment_status' => null, 'payment' => null];
         }
 
+        $providerSuccessful = $this->isSuccessfulPayment($payload);
+        $synchronized = false;
+
+        if ($providerSuccessful) {
+            $settlement = $this->settleSuccessfulPayment($payment, $payload);
+            $payment = $settlement['payment'];
+            $synchronized = $settlement['synchronized'];
+        }
+
         return [
             'verified' => true,
-            'successful' => $payment->status === 'paid',
-            'provider_successful' => $this->isSuccessfulPayment($payload),
+            'successful' => $providerSuccessful && $synchronized && $payment->status === 'paid',
+            'provider_successful' => $providerSuccessful,
             'payment_status' => $payment->status,
+            'order_id' => $payment->order_id,
             'payment' => $this->paymentData($payment),
         ];
     }
@@ -106,24 +116,35 @@ class VnpayService
             return ($orderUpdate['updated'] ?? false) ? $this->ipnResult('00') : $this->ipnResult('99');
         }
 
+        $settlement = $this->settleSuccessfulPayment($payment, $payload);
+
+        return $this->ipnResult($settlement['synchronized'] ? '00' : '99');
+    }
+
+    private function settleSuccessfulPayment(Payment $payment, array $payload): array
+    {
         $orderUpdate = $this->orders->markPaymentPaid((int) $payment->order_id);
 
         if (! ($orderUpdate['updated'] ?? false)) {
-            $this->payments->recordVnpaySyncPending($payment, $payload);
+            $payment = $this->payments->recordVnpaySyncPending($payment, $payload);
 
-            return $this->ipnResult('99');
+            return ['synchronized' => false, 'payment' => $payment];
         }
 
-        $this->payments->recordVnpayPaid($payment, $payload);
+        $payment = $this->payments->recordVnpayPaid($payment, $payload);
         $cartClear = $this->orders->clearCartForPaidOrder((int) $payment->order_id);
 
         if (! ($cartClear['cleared'] ?? false)) {
-            Log::warning('vnpay.ipn.cart_sync_pending', ['payment_id' => $payment->id, 'order_id' => $payment->order_id]);
+            Log::warning('vnpay.cart_sync_pending', [
+                'payment_id' => $payment->id,
+                'order_id' => $payment->order_id,
+                'source' => 'vnpay_callback',
+            ]);
 
-            return $this->ipnResult('99');
+            return ['synchronized' => false, 'payment' => $payment];
         }
 
-        return $this->ipnResult('00');
+        return ['synchronized' => true, 'payment' => $payment];
     }
 
     public function verifySignature(array $payload): bool

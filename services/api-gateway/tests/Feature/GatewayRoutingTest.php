@@ -139,6 +139,20 @@ test('admin order payment status route is forwarded only to order service', func
     Http::assertNotSent(fn ($request) => str_starts_with($request->url(), 'http://catalog.test/'));
 });
 
+test('staff cannot forward an admin payment status update', function () {
+    Http::fake([
+        'http://auth.test/api/internal/auth/introspect' => Http::response([
+            'data' => ['active' => true, 'role' => 'STAFF'],
+        ]),
+    ]);
+
+    $this->withToken('staff-token')
+        ->patchJson('/api/admin/orders/123/payment-status', ['payment_status' => 'paid'])
+        ->assertForbidden();
+
+    Http::assertNotSent(fn ($request) => $request->url() === 'http://order.test/api/admin/orders/123/payment-status');
+});
+
 test('customer and admin warranty routes are forwarded to order service', function () {
     Http::fake([
         'http://auth.test/api/internal/auth/introspect' => Http::response(['data' => ['active' => true]]),

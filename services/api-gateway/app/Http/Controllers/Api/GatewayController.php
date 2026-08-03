@@ -158,6 +158,14 @@ class GatewayController extends Controller
                     'code' => 'FORBIDDEN',
                 ], 403);
             }
+
+            if (preg_match('#^admin/orders/[0-9]+/payment-status$#', $normalizedPath) === 1
+                && strtoupper((string) ($accessToken['role'] ?? '')) !== 'ADMIN') {
+                return response()->json([
+                    'message' => 'Ban khong co quyen thuc hien chuc nang nay.',
+                    'code' => 'FORBIDDEN',
+                ], 403);
+            }
         }
 
         $serviceName = $this->resolveServiceName($path);
