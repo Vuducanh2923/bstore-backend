@@ -97,14 +97,20 @@ beforeEach(function () {
         $table->id();
         $table->string('code')->unique();
         $table->string('name');
+        $table->text('description')->nullable();
         $table->string('type');
         $table->decimal('value', 15, 2);
+        $table->decimal('max_discount_amount', 15, 2)->nullable();
         $table->decimal('min_order_amount', 15, 2)->default(0);
         $table->unsignedInteger('usage_limit')->nullable();
+        $table->unsignedInteger('usage_limit_per_customer')->nullable();
         $table->unsignedInteger('used_count')->default(0);
         $table->dateTime('start_date')->nullable();
         $table->dateTime('end_date')->nullable();
         $table->string('status')->default('active');
+        $table->unsignedBigInteger('created_by')->nullable();
+        $table->timestamps();
+        $table->softDeletes();
     });
 
     Schema::connection('bstore_catalog')->create('products', function (Blueprint $table) {

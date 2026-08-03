@@ -90,7 +90,7 @@ test('public brand api only returns active brands from database', function () {
     $this->getJson('/api/brands')
         ->assertOk()
         ->assertJsonPath('success', true)
-        ->assertJsonPath('message', 'Success')
+        ->assertJsonPath('message', 'Thành công.')
         ->assertJsonCount(1, 'data')
         ->assertJsonPath('data.0.name', 'Apple')
         ->assertJsonPath('data.0.slug', 'apple')

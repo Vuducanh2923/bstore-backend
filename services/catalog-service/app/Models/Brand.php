@@ -7,6 +7,8 @@ use Illuminate\Support\Facades\Schema;
 
 class Brand extends Model
 {
+    private static array $timestampSupport = [];
+
     protected $connection = 'bstore_catalog';
 
     protected $table = 'brands';
@@ -23,8 +25,12 @@ class Brand extends Model
 
     public function usesTimestamps(): bool
     {
-        return Schema::connection($this->getConnectionName())->hasColumn($this->getTable(), static::CREATED_AT)
-            && Schema::connection($this->getConnectionName())->hasColumn($this->getTable(), static::UPDATED_AT);
+        $cacheKey = spl_object_id($this->getConnection()).':'.$this->getTable();
+
+        return self::$timestampSupport[$cacheKey] ??= (
+            Schema::connection($this->getConnectionName())->hasColumn($this->getTable(), static::CREATED_AT)
+            && Schema::connection($this->getConnectionName())->hasColumn($this->getTable(), static::UPDATED_AT)
+        );
     }
 
     public function products()

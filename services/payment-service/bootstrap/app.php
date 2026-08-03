@@ -3,6 +3,7 @@
 use App\Http\Middleware\AdminToken;
 use App\Http\Middleware\CustomerToken;
 use App\Http\Middleware\InternalService;
+use App\Http\Middleware\RequestPerformance;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -10,7 +11,9 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Exceptions\ThrottleRequestsException;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -21,6 +24,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->append(RequestPerformance::class);
         $middleware->alias([
             'admin.token' => AdminToken::class,
             'customer.token' => CustomerToken::class,
@@ -28,6 +32,9 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->render(fn (ThrottleRequestsException $exception, Request $request) => $request->is('api/*')
+            ? response()->json(['success' => false, 'message' => 'Bạn thao tác quá nhanh, vui lòng thử lại sau.', 'data' => null], 429)
+            : null);
         $exceptions->render(function (ValidationException $exception, Request $request) {
             if (! $request->is('api/*')) {
                 return null;
@@ -46,9 +53,8 @@ return Application::configure(basePath: dirname(__DIR__))
             }
 
             return response()->json([
-                'success' => false,
-                'message' => 'Chua dang nhap',
-                'data' => null,
+                'message' => 'Unauthorized',
+                'code' => 'TOKEN_INVALID',
             ], 401);
         });
 
@@ -58,9 +64,8 @@ return Application::configure(basePath: dirname(__DIR__))
             }
 
             return response()->json([
-                'success' => false,
-                'message' => $exception->getMessage() ?: 'Khong co quyen truy cap',
-                'data' => null,
+                'message' => 'Forbidden',
+                'code' => 'FORBIDDEN',
             ], 403);
         });
 
@@ -87,4 +92,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 'data' => null,
             ], 404);
         });
+        $exceptions->render(fn (Throwable $exception, Request $request) => $request->is('api/*') && ! $exception instanceof HttpExceptionInterface
+            ? response()->json(['success' => false, 'message' => 'Đã xảy ra lỗi hệ thống.', 'data' => null], 500)
+            : null);
     })->create();

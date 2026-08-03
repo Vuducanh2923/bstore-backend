@@ -103,6 +103,9 @@ class RefundService
                 'status' => RefundRequest::STATUS_PENDING,
             ]);
 
+            $order->refund_status = Order::REFUND_PENDING;
+            $order->save();
+
             $this->histories->record(
                 (int) $order->id,
                 'refund_requested',
@@ -160,6 +163,11 @@ class RefundService
                 $refund->status = RefundRequest::STATUS_REFUNDING;
                 $refund->admin_note = $note ?? $refund->admin_note;
                 $refund->save();
+
+                if ($refund->order) {
+                    $refund->order->refund_status = Order::REFUND_PROCESSING;
+                    $refund->order->save();
+                }
 
                 $this->histories->record(
                     (int) $refund->order_id,
@@ -286,6 +294,13 @@ class RefundService
             $refund->admin_note = $note;
             $refund->save();
 
+            if ($refund->order) {
+                $refund->order->refund_status = $nextStatus === RefundRequest::STATUS_REJECTED
+                    ? Order::REFUND_FAILED
+                    : Order::REFUND_PENDING;
+                $refund->order->save();
+            }
+
             $this->histories->record(
                 (int) $refund->order_id,
                 'refund_'.$nextStatus,
@@ -356,14 +371,14 @@ class RefundService
             if ($order) {
                 $oldOrderStatus = (string) $order->status;
                 $order->payment_status = 'refunded';
-                $order->status = Order::STATUS_REFUNDED;
+                $order->refund_status = Order::REFUND_COMPLETED;
                 $order->save();
 
                 $this->histories->record(
                     (int) $order->id,
                     'refund_refunded',
                     $oldOrderStatus,
-                    Order::STATUS_REFUNDED,
+                    $oldOrderStatus,
                     $actor,
                     $data['admin_note'] ?? null,
                 );

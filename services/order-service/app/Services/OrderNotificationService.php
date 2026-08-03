@@ -128,11 +128,15 @@ class OrderNotificationService
 
     private function statusMessage(Order $order): string
     {
+        if ($order->cancel_request_status === Order::CANCEL_REQUEST_PENDING) {
+            return 'Yeu cau huy don dang cho xu ly.';
+        }
+
         return match ($order->status) {
             Order::STATUS_PROCESSING => "Don hang da duoc nhan vien {$order->assigned_staff_name} tiep nhan.",
             Order::STATUS_SHIPPING => 'Don hang dang duoc van chuyen.',
             Order::STATUS_DELIVERED => 'Don hang da giao thanh cong.',
-            Order::STATUS_PENDING_CANCEL => 'Yeu cau huy don dang cho xu ly.',
+            Order::STATUS_COMPLETED => 'Don hang da hoan tat.',
             Order::STATUS_CANCELLED => 'Yeu cau huy don da duoc chap nhan.',
             default => "Don hang da duoc cap nhat sang trang thai {$order->status}.",
         };

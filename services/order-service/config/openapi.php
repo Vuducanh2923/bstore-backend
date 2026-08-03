@@ -19,6 +19,7 @@ return [
         ['name' => 'Documentation', 'description' => 'OpenAPI document endpoint.'],
         ['name' => 'Carts', 'description' => 'Cart-specific endpoints.'],
         ['name' => 'Orders', 'description' => 'Order-specific endpoints.'],
+        ['name' => 'Discount Codes', 'description' => 'Administrator discount code management.'],
         ['name' => 'Warranty', 'description' => 'Customer and administrator warranty request workflow.'],
     ],
     'paths' => [
@@ -29,6 +30,66 @@ return [
                 'operationId' => 'getOrderOpenApiDocument',
                 'responses' => [
                     '200' => ['$ref' => '#/components/responses/OpenApiDocument'],
+                ],
+            ],
+        ],
+        '/admin/discount-codes' => [
+            'get' => [
+                'tags' => ['Discount Codes'],
+                'summary' => 'List discount codes',
+                'security' => [['bearerAuth' => []]],
+                'responses' => ['200' => ['description' => 'Paginated discount code list']],
+            ],
+            'post' => [
+                'tags' => ['Discount Codes'],
+                'summary' => 'Create a discount code',
+                'security' => [['bearerAuth' => []]],
+                'requestBody' => [
+                    'required' => true,
+                    'content' => [
+                        'application/json' => [
+                            'schema' => ['$ref' => '#/components/schemas/DiscountCodeCreateRequest'],
+                        ],
+                    ],
+                ],
+                'responses' => [
+                    '201' => ['description' => 'Discount code created'],
+                    '409' => ['description' => 'Code already exists'],
+                    '422' => ['$ref' => '#/components/responses/ValidationError'],
+                ],
+            ],
+        ],
+        '/admin/discount-codes/{id}' => [
+            'get' => [
+                'tags' => ['Discount Codes'],
+                'summary' => 'Get discount code detail',
+                'security' => [['bearerAuth' => []]],
+                'parameters' => [['$ref' => '#/components/parameters/Id']],
+                'responses' => [
+                    '200' => ['description' => 'Discount code detail'],
+                    '404' => ['$ref' => '#/components/responses/NotFound'],
+                ],
+            ],
+            'delete' => [
+                'tags' => ['Discount Codes'],
+                'summary' => 'Delete an unused code or deactivate a used code',
+                'security' => [['bearerAuth' => []]],
+                'parameters' => [['$ref' => '#/components/parameters/Id']],
+                'responses' => [
+                    '200' => ['description' => 'Deleted or deactivated'],
+                    '404' => ['$ref' => '#/components/responses/NotFound'],
+                ],
+            ],
+        ],
+        '/admin/discount-codes/{id}/deactivate' => [
+            'put' => [
+                'tags' => ['Discount Codes'],
+                'summary' => 'Deactivate a discount code',
+                'security' => [['bearerAuth' => []]],
+                'parameters' => [['$ref' => '#/components/parameters/Id']],
+                'responses' => [
+                    '200' => ['description' => 'Discount code deactivated'],
+                    '404' => ['$ref' => '#/components/responses/NotFound'],
                 ],
             ],
         ],
@@ -220,6 +281,24 @@ return [
             ],
         ],
         'schemas' => [
+            'DiscountCodeCreateRequest' => [
+                'type' => 'object',
+                'required' => ['code', 'name', 'discount_type', 'discount_value', 'starts_at', 'ends_at'],
+                'properties' => [
+                    'code' => ['type' => 'string', 'maxLength' => 191, 'example' => 'BSTORE10'],
+                    'name' => ['type' => 'string', 'maxLength' => 255],
+                    'description' => ['type' => 'string', 'nullable' => true],
+                    'discount_type' => ['type' => 'string', 'enum' => ['percentage', 'fixed_amount']],
+                    'discount_value' => ['type' => 'number', 'exclusiveMinimum' => 0],
+                    'max_discount_amount' => ['type' => 'number', 'nullable' => true, 'exclusiveMinimum' => 0],
+                    'min_order_amount' => ['type' => 'number', 'minimum' => 0],
+                    'usage_limit' => ['type' => 'integer', 'nullable' => true, 'minimum' => 1],
+                    'usage_limit_per_customer' => ['type' => 'integer', 'nullable' => true, 'minimum' => 1],
+                    'starts_at' => ['type' => 'string', 'format' => 'date-time'],
+                    'ends_at' => ['type' => 'string', 'format' => 'date-time'],
+                    'status' => ['type' => 'string', 'enum' => ['active', 'inactive', 'expired']],
+                ],
+            ],
             'WarrantyCreateRequest' => [
                 'type' => 'object',
                 'required' => ['order_id', 'order_item_id', 'reason'],
@@ -352,9 +431,25 @@ return [
                     'total_amount' => ['type' => 'string', 'example' => '30000000.00'],
                     'discount_amount' => ['type' => 'string', 'example' => '100000.00'],
                     'final_amount' => ['type' => 'string', 'example' => '29900000.00'],
-                    'status' => ['type' => 'string', 'nullable' => true],
+                    'status' => [
+                        'type' => 'string',
+                        'enum' => ['pending', 'processing', 'shipping', 'delivered', 'completed', 'cancelled'],
+                    ],
+                    'cancel_request_status' => [
+                        'type' => 'string',
+                        'enum' => ['none', 'pending', 'approved', 'rejected'],
+                    ],
+                    'refund_status' => [
+                        'type' => 'string',
+                        'enum' => ['none', 'pending', 'processing', 'completed', 'failed'],
+                    ],
+                    'return_status' => [
+                        'type' => 'string',
+                        'enum' => ['none', 'pending', 'approved', 'received', 'completed', 'rejected'],
+                    ],
                     'payment_status' => ['type' => 'string', 'nullable' => true],
                     'cancel_reason' => ['type' => 'string', 'nullable' => true],
+                    'return_reason' => ['type' => 'string', 'nullable' => true],
                     'note' => ['type' => 'string', 'nullable' => true],
                     'items' => [
                         'type' => 'array',

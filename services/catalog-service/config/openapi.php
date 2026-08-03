@@ -356,6 +356,9 @@ return [
                         'application/json' => [
                             'schema' => ['$ref' => '#/components/schemas/ProductCreateRequest'],
                         ],
+                        'multipart/form-data' => [
+                            'schema' => ['$ref' => '#/components/schemas/ProductCreateRequest'],
+                        ],
                     ],
                 ],
                 'responses' => [
@@ -474,6 +477,24 @@ return [
                 'tags' => ['Products'],
                 'summary' => 'Replace a product',
                 'operationId' => 'replaceProduct',
+                'requestBody' => ['$ref' => '#/components/requestBodies/ProductUpdate'],
+                'responses' => [
+                    '200' => [
+                        'description' => 'Product updated',
+                        'content' => [
+                            'application/json' => [
+                                'schema' => ['$ref' => '#/components/schemas/ProductResponse'],
+                            ],
+                        ],
+                    ],
+                    '404' => ['$ref' => '#/components/responses/NotFound'],
+                    '422' => ['$ref' => '#/components/responses/ValidationError'],
+                ],
+            ],
+            'post' => [
+                'tags' => ['Products'],
+                'summary' => 'Update a product with multipart image uploads',
+                'operationId' => 'updateProductMultipart',
                 'requestBody' => ['$ref' => '#/components/requestBodies/ProductUpdate'],
                 'responses' => [
                     '200' => [
@@ -664,6 +685,9 @@ return [
                 'required' => true,
                 'content' => [
                     'application/json' => [
+                        'schema' => ['$ref' => '#/components/schemas/ProductUpdateRequest'],
+                    ],
+                    'multipart/form-data' => [
                         'schema' => ['$ref' => '#/components/schemas/ProductUpdateRequest'],
                     ],
                 ],
@@ -873,10 +897,11 @@ return [
             ],
             'ProductImageInput' => [
                 'type' => 'object',
-                'required' => ['image_url'],
+                'description' => 'Provide either image_url or image. Uploaded files are stored on Cloudinary automatically.',
                 'properties' => [
                     'product_variant_id' => ['type' => 'integer', 'nullable' => true],
-                    'image_url' => ['type' => 'string', 'maxLength' => 500, 'example' => 'https://res.cloudinary.com/demo/image/upload/v1/bstore/products/example.webp'],
+                    'image_url' => ['type' => 'string', 'format' => 'uri', 'nullable' => true, 'maxLength' => 500, 'example' => 'https://res.cloudinary.com/demo/image/upload/v1/bstore/products/example.webp'],
+                    'image' => ['type' => 'string', 'format' => 'binary', 'nullable' => true, 'description' => 'jpg, jpeg, png, or webp. Max 5 MB.'],
                     'public_id' => ['type' => 'string', 'nullable' => true, 'maxLength' => 255, 'example' => 'bstore/products/example'],
                     'is_thumbnail' => ['type' => 'boolean', 'nullable' => true],
                 ],
@@ -995,6 +1020,9 @@ return [
                     'sku' => ['type' => 'string'],
                     'barcode' => ['type' => 'string', 'nullable' => true],
                     'status' => ['type' => 'string', 'nullable' => true],
+                    'quantity' => ['type' => 'integer', 'example' => 10],
+                    'reserved_quantity' => ['type' => 'integer', 'example' => 3],
+                    'available_quantity' => ['type' => 'integer', 'example' => 7],
                 ],
             ],
             'ProductImage' => [
@@ -1025,6 +1053,10 @@ return [
                     'sale_price' => ['type' => 'string', 'nullable' => true, 'example' => '26991000.00'],
                     'is_sale' => ['type' => 'boolean', 'example' => true],
                     'status' => ['type' => 'string', 'nullable' => true],
+                    'total_quantity' => ['type' => 'integer', 'example' => 20],
+                    'total_reserved' => ['type' => 'integer', 'example' => 4],
+                    'available_quantity' => ['type' => 'integer', 'example' => 16],
+                    'in_stock' => ['type' => 'boolean', 'example' => true],
                     'category' => ['$ref' => '#/components/schemas/Category'],
                     'brand' => ['$ref' => '#/components/schemas/ProductBrand'],
                     'variants' => [
@@ -1059,6 +1091,10 @@ return [
                     'brand_name' => ['type' => 'string', 'nullable' => true, 'example' => 'Lenovo'],
                     'brand' => ['$ref' => '#/components/schemas/ProductBrand'],
                     'rating' => ['type' => 'number', 'format' => 'float', 'nullable' => true, 'example' => 4.8],
+                    'total_quantity' => ['type' => 'integer', 'example' => 20],
+                    'total_reserved' => ['type' => 'integer', 'example' => 4],
+                    'available_quantity' => ['type' => 'integer', 'example' => 16],
+                    'in_stock' => ['type' => 'boolean', 'example' => true],
                 ],
             ],
             'Pagination' => [

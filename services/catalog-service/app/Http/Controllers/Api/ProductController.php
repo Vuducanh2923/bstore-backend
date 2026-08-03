@@ -10,6 +10,7 @@ use App\Services\CatalogCache;
 use App\Services\ProductService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class ProductController extends Controller
 {
@@ -34,86 +35,67 @@ class ProductController extends Controller
             'sort',
         ]);
 
-        $payload = $this->cache->remember(
-            'products:index:'.md5(json_encode($filters)),
-            120,
-            fn (): array => $this->paginatedProductPayload($this->productService->paginatedList($filters)),
-        );
+        $payload = $this->paginatedProductPayload($this->productService->paginatedList($filters));
 
         return response()->json([
             'success' => true,
-            'message' => 'Success',
+            'message' => 'Thành công.',
             ...$payload,
         ]);
     }
 
     public function sale(Request $request): JsonResponse
     {
-        $payload = $this->cache->remember(
-            'products:sale:'.md5(json_encode($request->query())),
-            300,
-            fn (): array => $this->paginatedProductPayload(
-                $this->productService->salePaginatedList($request->only([
-                    'page',
-                    'limit',
-                    'per_page',
-                    'category_id',
-                    'category',
-                    'brand_id',
-                    'brand',
-                    'keyword',
-                    'search',
-                    'status',
-                ]))
-            ),
+        $payload = $this->paginatedProductPayload(
+            $this->productService->salePaginatedList($request->only([
+                'page',
+                'limit',
+                'per_page',
+                'category_id',
+                'category',
+                'brand_id',
+                'brand',
+                'keyword',
+                'search',
+                'status',
+            ]))
         );
 
         return response()->json([
             'success' => true,
-            'message' => 'Success',
+            'message' => 'Thành công.',
             ...$payload,
         ]);
     }
 
     public function newProducts(Request $request): JsonResponse
     {
-        $payload = $this->cache->remember(
-            'products:new:'.md5(json_encode($request->query())),
-            300,
-            fn (): array => $this->paginatedProductPayload(
-                $this->productService->newPaginatedList($request->only([
-                    'page',
-                    'limit',
-                    'per_page',
-                    'category_id',
-                    'category',
-                    'brand_id',
-                    'brand',
-                    'keyword',
-                    'search',
-                    'status',
-                ]))
-            ),
+        $payload = $this->paginatedProductPayload(
+            $this->productService->newPaginatedList($request->only([
+                'page',
+                'limit',
+                'per_page',
+                'category_id',
+                'category',
+                'brand_id',
+                'brand',
+                'keyword',
+                'search',
+                'status',
+            ]))
         );
 
         return response()->json([
             'success' => true,
-            'message' => 'Success',
+            'message' => 'Thành công.',
             ...$payload,
         ]);
     }
 
     public function show(string $slug): JsonResponse
     {
-        $payload = $this->cache->remember(
-            'products:slug:'.sha1($slug),
-            300,
-            function () use ($slug): ?array {
-                $product = $this->productService->findBySlug($slug);
-
-                return $product ? ProductResource::make($product)->resolve() : null;
-            },
-        );
+        $product = $this->productService->findBySlug($slug);
+        $payload = $product ? ProductResource::make($product)->resolve() : null;
 
         if ($payload === null) {
             return response()->json([
@@ -130,15 +112,8 @@ class ProductController extends Controller
 
     public function showById(int $id): JsonResponse
     {
-        $payload = $this->cache->remember(
-            'products:id:'.$id,
-            300,
-            function () use ($id): ?array {
-                $product = $this->productService->findById($id);
-
-                return $product ? ProductResource::make($product)->resolve() : null;
-            },
-        );
+        $product = $this->productService->findById($id);
+        $payload = $product ? ProductResource::make($product)->resolve() : null;
 
         if ($payload === null) {
             return response()->json([
@@ -177,7 +152,7 @@ class ProductController extends Controller
         }
 
         try {
-            $product = $this->productService->update($product, $this->validatedData($request, false));
+            $product = $this->productService->update($product, $this->validatedData($request, false, $id));
         } catch (InventoryReservationException $exception) {
             return $this->inventoryConflict($exception);
         }
@@ -227,15 +202,18 @@ class ProductController extends Controller
         ];
     }
 
-    private function validatedData(Request $request, bool $creating = true): array
+    private function validatedData(Request $request, bool $creating = true, ?int $productId = null): array
     {
         $nameRule = $creating ? 'required' : 'sometimes';
         $requiredOnCreate = $creating ? 'required' : 'sometimes';
+        $variantRule = $productId !== null
+            ? Rule::exists('bstore_catalog.product_variants', 'id')->where('product_id', $productId)
+            : Rule::in([]);
 
         return $request->validate([
-            'category_id' => [$requiredOnCreate, 'integer'],
-            'brand_id' => [$requiredOnCreate, 'integer'],
-            'warranty_policy_id' => ['nullable', 'integer'],
+            'category_id' => [$requiredOnCreate, 'integer', 'exists:bstore_catalog.categories,id'],
+            'brand_id' => [$requiredOnCreate, 'integer', 'exists:bstore_catalog.brands,id'],
+            'warranty_policy_id' => ['nullable', 'integer', 'exists:bstore_catalog.warranty_policies,id'],
             'name' => [$nameRule, 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'specifications' => ['nullable'],
@@ -244,7 +222,7 @@ class ProductController extends Controller
             'discount_percent' => ['nullable', 'numeric', 'min:0', 'max:99.99'],
             'status' => ['nullable', 'string', 'max:20'],
             'variants' => ['sometimes', 'array'],
-            'variants.*.id' => ['sometimes', 'integer', 'min:1'],
+            'variants.*.id' => ['sometimes', 'integer', 'min:1', $variantRule],
             'variants.*.color' => ['nullable', 'string', 'max:50'],
             'variants.*.ram' => ['nullable', 'string', 'max:50'],
             'variants.*.storage' => ['nullable', 'string', 'max:50'],
@@ -256,8 +234,9 @@ class ProductController extends Controller
             'variants.*.quantity' => ['sometimes', 'integer', 'min:0'],
             'variants.*.stock' => ['sometimes', 'integer', 'min:0'],
             'images' => ['sometimes', 'array'],
-            'images.*.product_variant_id' => ['nullable', 'integer'],
-            'images.*.image_url' => ['required_with:images', 'string', 'max:500'],
+            'images.*.product_variant_id' => ['nullable', 'integer', $variantRule],
+            'images.*.image_url' => ['nullable', 'string', 'max:500', 'required_without:images.*.image'],
+            'images.*.image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120', 'required_without:images.*.image_url'],
             'images.*.public_id' => ['nullable', 'string', 'max:255'],
             'images.*.is_thumbnail' => ['nullable', 'boolean'],
             'warranty_policy' => ['sometimes', 'nullable', 'array'],

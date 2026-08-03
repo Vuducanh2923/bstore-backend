@@ -39,7 +39,7 @@ class AuthTokenService
         $key = $this->key();
 
         if ($key === '') {
-            throw new \RuntimeException('AUTH_TOKEN_KEY is not configured');
+            throw new \RuntimeException('AUTH_TOKEN_KEY chưa được cấu hình.');
         }
 
         $segments = [

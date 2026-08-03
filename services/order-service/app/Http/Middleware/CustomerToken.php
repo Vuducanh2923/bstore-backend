@@ -16,9 +16,8 @@ class CustomerToken
 
         if (! $payload || empty($payload['sub'])) {
             return response()->json([
-                'success' => false,
-                'message' => 'Chua dang nhap',
-                'data' => null,
+                'message' => 'Bạn chưa đăng nhập.',
+                'code' => 'TOKEN_INVALID',
             ], 401);
         }
 
@@ -27,9 +26,8 @@ class CustomerToken
         // `admin.token` middleware and `/admin` route prefix.
         if (! in_array(strtoupper((string) ($payload['role'] ?? '')), ['CUSTOMER', 'ADMIN'], true)) {
             return response()->json([
-                'success' => false,
-                'message' => 'Khong co quyen truy cap',
-                'data' => null,
+                'message' => 'Bạn không có quyền thực hiện chức năng này.',
+                'code' => 'FORBIDDEN',
             ], 403);
         }
 

@@ -40,6 +40,14 @@ class AuthController extends Controller
         $data = $request->validated();
         $result = $this->authService->login($data['email'], $data['password']);
 
+        if ($result['status'] === 'password_reset_required') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tai khoan su dung mat khau cu. Vui long dat lai mat khau.',
+                'data' => null,
+            ], 403);
+        }
+
         if ($result['status'] === 'email_unverified') {
             return response()->json([
                 'success' => false,
@@ -177,10 +185,10 @@ class AuthController extends Controller
 
         if ($status === EmailVerificationService::STATUS_EMAIL_NOT_FOUND) {
             return response()->json([
-                'success' => false,
-                'message' => 'Email khong ton tai trong bang users',
+                'success' => true,
+                'message' => 'Neu email hop le, ma OTP dat lai mat khau da duoc gui.',
                 'data' => null,
-            ], 404);
+            ]);
         }
 
         return response()->json([

@@ -47,9 +47,23 @@ class ResourceController extends Controller
             $query->with($relations);
         }
 
+        $perPage = min(100, max(1, (int) $request->query('per_page', $request->query('limit', 25))));
+        $records = $query->orderByDesc('id')->paginate(
+            $perPage,
+            ['*'],
+            'page',
+            max(1, (int) $request->query('page', 1)),
+        );
+
         return response()->json([
             'success' => true,
-            'data' => $query->orderByDesc('id')->get(),
+            'data' => $records->items(),
+            'pagination' => [
+                'page' => $records->currentPage(),
+                'limit' => $records->perPage(),
+                'total' => $records->total(),
+                'totalPages' => $records->lastPage(),
+            ],
         ]);
     }
 

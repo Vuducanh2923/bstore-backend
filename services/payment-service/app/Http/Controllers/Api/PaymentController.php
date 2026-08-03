@@ -134,7 +134,7 @@ class PaymentController extends Controller
         } catch (Throwable $exception) {
             Log::error('vnpay.ipn.failed', ['message' => $exception->getMessage()]);
 
-            return response()->json(['RspCode' => '99', 'Message' => 'Unknown error']);
+            return response()->json(['RspCode' => '99', 'Message' => 'Đã xảy ra lỗi hệ thống.']);
         }
     }
 

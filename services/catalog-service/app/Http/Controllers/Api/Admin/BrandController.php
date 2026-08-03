@@ -33,7 +33,7 @@ class BrandController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Success',
+            'message' => 'Thành công.',
             'data' => BrandResource::collection($brands->items())->resolve(),
             'pagination' => [
                 'page' => $brands->currentPage(),

@@ -211,6 +211,24 @@ test('product sale price is calculated when creating and updating a product', fu
         ->assertJsonPath('data.is_sale', false);
 });
 
+test('product description is sanitized before it is stored', function () {
+    $productId = $this->postJson('/api/products', [
+        ...productPayload('Safe Description Tablet'),
+        'description' => '<h2>Thong tin</h2><p onclick="alert(1)"><strong>Tot</strong>'
+            .'<script>alert(2)</script></p><a href="javascript:alert(3)">Link</a>',
+    ])->assertCreated()->json('data.id');
+
+    $stored = Product::findOrFail($productId)->description;
+
+    expect($stored)
+        ->toContain('<h2>Thong tin</h2>')
+        ->toContain('<p><strong>Tot</strong></p>')
+        ->toContain('<a>Link</a>')
+        ->not->toContain('onclick')
+        ->not->toContain('<script')
+        ->not->toContain('javascript:');
+});
+
 test('sale percent and discount percent cannot reduce product price to zero', function () {
     $this->postJson('/api/products', [
         ...productPayload('Free Sale Tablet'),
@@ -282,7 +300,7 @@ test('product list is paginated and only returns summary fields', function () {
     $this->getJson('/api/products?page=1&limit=1&category=tablet&sort=price_asc')
         ->assertOk()
         ->assertJsonPath('success', true)
-        ->assertJsonPath('message', 'Success')
+        ->assertJsonPath('message', 'Thành công.')
         ->assertJsonCount(1, 'data')
         ->assertJsonPath('data.0.id', $budgetTablet->id)
         ->assertJsonPath('data.0.name', 'Budget Tablet')
@@ -316,6 +334,39 @@ test('product list is paginated and only returns summary fields', function () {
         ->assertJsonMissingPath('data.0.category');
 });
 
+test('product APIs expose variant and product inventory availability without changing response shape', function () {
+    $product = Product::create(productPayload('Stock Tablet'));
+    $variantId = DB::connection('bstore_catalog')->table('product_variants')->insertGetId([
+        'product_id' => $product->id,
+        'sku' => 'STOCK-128',
+        'price' => 12000000,
+        'status' => 'active',
+    ]);
+    DB::connection('bstore_catalog')->table('inventories')->insert([
+        'product_variant_id' => $variantId,
+        'quantity' => 10,
+        'reserved_quantity' => 3,
+    ]);
+
+    $this->getJson('/api/products')
+        ->assertOk()
+        ->assertJsonPath('data.0.total_quantity', 10)
+        ->assertJsonPath('data.0.total_reserved', 3)
+        ->assertJsonPath('data.0.available_quantity', 7)
+        ->assertJsonPath('data.0.in_stock', true);
+
+    $this->getJson("/api/products/{$product->id}")
+        ->assertOk()
+        ->assertJsonPath('data.total_quantity', 10)
+        ->assertJsonPath('data.total_reserved', 3)
+        ->assertJsonPath('data.available_quantity', 7)
+        ->assertJsonPath('data.in_stock', true)
+        ->assertJsonPath('data.variants.0.quantity', 10)
+        ->assertJsonPath('data.variants.0.reserved_quantity', 3)
+        ->assertJsonPath('data.variants.0.available_quantity', 7)
+        ->assertJsonPath('data.variants.0.inventory.available_quantity', 7);
+});
+
 test('sale product list only returns sale products newest first', function () {
     Product::create(productPayload('Regular Tablet'));
     $olderSale = Product::create([
@@ -334,7 +385,7 @@ test('sale product list only returns sale products newest first', function () {
     $this->getJson('/api/products/sale')
         ->assertOk()
         ->assertJsonPath('success', true)
-        ->assertJsonPath('message', 'Success')
+        ->assertJsonPath('message', 'Thành công.')
         ->assertJsonCount(2, 'data')
         ->assertJsonPath('data.0.id', $newerSale->id)
         ->assertJsonPath('data.0.original_price', '12000000.00')
@@ -364,7 +415,7 @@ test('category and brand header APIs only return active records', function () {
     $this->getJson('/api/categories')
         ->assertOk()
         ->assertJsonPath('success', true)
-        ->assertJsonPath('message', 'Success')
+        ->assertJsonPath('message', 'Thành công.')
         ->assertJsonCount(1, 'data')
         ->assertJsonPath('data.0.id', 1)
         ->assertJsonPath('data.0.name', 'Tablet')
@@ -375,7 +426,7 @@ test('category and brand header APIs only return active records', function () {
     $this->getJson('/api/brands')
         ->assertOk()
         ->assertJsonPath('success', true)
-        ->assertJsonPath('message', 'Success')
+        ->assertJsonPath('message', 'Thành công.')
         ->assertJsonCount(1, 'data')
         ->assertJsonPath('data.0.id', 1)
         ->assertJsonPath('data.0.name', 'Lenovo')
@@ -410,7 +461,7 @@ test('new product list returns latest active category and brand products only', 
     $this->getJson('/api/products/new')
         ->assertOk()
         ->assertJsonPath('success', true)
-        ->assertJsonPath('message', 'Success')
+        ->assertJsonPath('message', 'Thành công.')
         ->assertJsonCount(20, 'data')
         ->assertJsonPath('data.0.name', 'New Product 25')
         ->assertJsonPath('data.19.name', 'New Product 6')

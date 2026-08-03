@@ -57,6 +57,55 @@ test('internal payment status endpoint marks an order paid without assigning sta
         ->and($order->paid_at)->not->toBeNull();
 });
 
+test('an order can be marked paid in every business status except cancelled', function (string $status) {
+    $orderId = DB::connection('bstore_order')->table('orders')->insertGetId([
+        'user_id' => 10,
+        'status' => $status,
+        'payment_status' => 'unpaid',
+        'payment_method' => 'cod',
+        'final_amount' => 125000,
+    ]);
+
+    $this->withHeaders(internalServiceHeaders())
+        ->patchJson("/api/internal/orders/{$orderId}/payment-status", ['payment_status' => 'paid'])
+        ->assertOk()
+        ->assertJsonPath('data.status', $status)
+        ->assertJsonPath('data.payment_status', 'paid');
+})->with(['pending', 'processing', 'shipping', 'delivered', 'completed']);
+
+test('a cancelled order cannot be marked paid', function () {
+    $orderId = DB::connection('bstore_order')->table('orders')->insertGetId([
+        'user_id' => 10,
+        'status' => 'cancelled',
+        'payment_status' => 'unpaid',
+        'payment_method' => 'cod',
+        'final_amount' => 125000,
+    ]);
+
+    $this->withHeaders(internalServiceHeaders())
+        ->patchJson("/api/internal/orders/{$orderId}/payment-status", ['payment_status' => 'paid'])
+        ->assertUnprocessable();
+
+    expect(DB::connection('bstore_order')->table('orders')->find($orderId)->payment_status)->toBe('unpaid');
+});
+
+test('payment status cannot be changed after an order is paid', function () {
+    $orderId = DB::connection('bstore_order')->table('orders')->insertGetId([
+        'user_id' => 10,
+        'status' => 'delivered',
+        'payment_status' => 'paid',
+        'payment_method' => 'cod',
+        'final_amount' => 125000,
+        'paid_at' => '2026-07-02 12:30:00',
+    ]);
+
+    $this->withHeaders(internalServiceHeaders())
+        ->patchJson("/api/internal/orders/{$orderId}/payment-status", ['payment_status' => 'failed'])
+        ->assertUnprocessable();
+
+    expect(DB::connection('bstore_order')->table('orders')->find($orderId)->payment_status)->toBe('paid');
+});
+
 test('internal payment status endpoint returns not found for missing order', function () {
     $this->withHeaders(internalServiceHeaders())->patchJson('/api/internal/orders/999/payment-status', [
         'payment_status' => 'paid',

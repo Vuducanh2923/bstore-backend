@@ -10,10 +10,12 @@ use App\Models\Product;
 use App\Models\ProductImage;
 use App\Models\ProductVariant;
 use App\Models\WarrantyPolicy;
+use App\Support\ProductDescriptionSanitizer;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Throwable;
 
 class ProductService
 {
@@ -51,7 +53,12 @@ class ProductService
 
     private ?array $cachedBrandRelationColumns = null;
 
-    public function __construct(private readonly CloudinaryService $cloudinaryService) {}
+    private ?bool $inventoryTablesAvailable = null;
+
+    public function __construct(
+        private readonly CloudinaryService $cloudinaryService,
+        private readonly ProductDescriptionSanitizer $descriptionSanitizer,
+    ) {}
 
     public function paginatedList(
         array $filters = [],
@@ -68,6 +75,14 @@ class ProductService
                 'category' => fn ($categoryQuery) => $categoryQuery->select(['id', 'name', 'slug', 'status']),
                 'brand' => fn ($brandQuery) => $brandQuery->select($this->brandRelationColumns()),
             ]);
+
+        if ($this->inventoryTablesAvailable()) {
+            $query
+                ->withSum('inventories as total_quantity', 'quantity')
+                ->withSum('inventories as total_reserved', 'reserved_quantity');
+        } else {
+            $query->selectRaw('0 as total_quantity, 0 as total_reserved');
+        }
 
         if (! in_array('thumbnail', $productColumns, true)) {
             $query->addSelect([
@@ -172,29 +187,46 @@ class ProductService
 
     public function create(array $data): Product
     {
-        return DB::connection('bstore_catalog')->transaction(function () use ($data) {
-            $variants = $data['variants'] ?? [];
-            $images = $data['images'] ?? [];
-            $warrantyPolicy = $data['warranty_policy'] ?? null;
+        if (array_key_exists('description', $data)) {
+            $data['description'] = $this->descriptionSanitizer->sanitize($data['description']);
+        }
 
-            unset($data['variants'], $data['images'], $data['warranty_policy']);
+        [$data, $uploadedPublicIds] = $this->uploadInlineProductImages($data);
 
-            if (is_array($warrantyPolicy)) {
-                $data['warranty_policy_id'] = WarrantyPolicy::create($this->normalizeWarrantyPolicy($warrantyPolicy))->id;
-            }
+        try {
+            return DB::connection('bstore_catalog')->transaction(function () use ($data) {
+                $variants = $data['variants'] ?? [];
+                $images = $data['images'] ?? [];
+                $warrantyPolicy = $data['warranty_policy'] ?? null;
 
-            $data = $this->withSalePricing($data, $this->productColumns());
+                unset($data['variants'], $data['images'], $data['warranty_policy']);
 
-            $product = Product::create($data);
-            $this->syncVariants($product->id, $variants);
-            $this->syncImages($product->id, $images);
+                if (is_array($warrantyPolicy)) {
+                    $data['warranty_policy_id'] = WarrantyPolicy::create($this->normalizeWarrantyPolicy($warrantyPolicy))->id;
+                }
 
-            return $product->fresh(self::RELATIONS);
-        });
+                $data = $this->withSalePricing($data, $this->productColumns());
+
+                $product = Product::create($data);
+                $this->syncVariants($product->id, $variants);
+                $this->syncImages($product->id, $images);
+
+                return $product->fresh(self::RELATIONS);
+            });
+        } catch (Throwable $exception) {
+            $this->deleteCloudinaryImages($uploadedPublicIds, false);
+
+            throw $exception;
+        }
     }
 
     public function update(Product $product, array $data): Product
     {
+        if (array_key_exists('description', $data)) {
+            $data['description'] = $this->descriptionSanitizer->sanitize($data['description']);
+        }
+
+        [$data, $uploadedPublicIds] = $this->uploadInlineProductImages($data);
         $hasImages = array_key_exists('images', $data);
         $oldImagePublicIds = [];
         $newImagePublicIds = [];
@@ -205,42 +237,78 @@ class ProductService
             $newImagePublicIds = $this->imagePublicIds($data['images']);
         }
 
-        $updatedProduct = DB::connection('bstore_catalog')->transaction(function () use ($product, $data) {
-            $hasVariants = array_key_exists('variants', $data);
-            $hasImages = array_key_exists('images', $data);
-            $hasWarrantyPolicy = array_key_exists('warranty_policy', $data);
+        try {
+            $updatedProduct = DB::connection('bstore_catalog')->transaction(function () use ($product, $data) {
+                $hasVariants = array_key_exists('variants', $data);
+                $hasImages = array_key_exists('images', $data);
+                $hasWarrantyPolicy = array_key_exists('warranty_policy', $data);
 
-            $variants = $data['variants'] ?? [];
-            $images = $data['images'] ?? [];
-            $warrantyPolicy = $data['warranty_policy'] ?? null;
+                $variants = $data['variants'] ?? [];
+                $images = $data['images'] ?? [];
+                $warrantyPolicy = $data['warranty_policy'] ?? null;
 
-            unset($data['variants'], $data['images'], $data['warranty_policy']);
+                unset($data['variants'], $data['images'], $data['warranty_policy']);
 
-            if ($hasWarrantyPolicy) {
-                $this->applyWarrantyPolicy($product, $data, $warrantyPolicy);
-            }
+                if ($hasWarrantyPolicy) {
+                    $this->applyWarrantyPolicy($product, $data, $warrantyPolicy);
+                }
 
-            $data = $this->withSalePricing($data, $this->productColumns(), $product);
+                $data = $this->withSalePricing($data, $this->productColumns(), $product);
 
-            $product->update($data);
+                $product->update($data);
 
-            if ($hasVariants) {
-                $this->syncVariants($product->id, $variants, true);
-            }
+                if ($hasVariants) {
+                    $this->syncVariants($product->id, $variants, true);
+                }
 
-            if ($hasImages) {
-                ProductImage::where('product_id', $product->id)->delete();
-                $this->syncImages($product->id, $images);
-            }
+                if ($hasImages) {
+                    ProductImage::where('product_id', $product->id)->delete();
+                    $this->syncImages($product->id, $images);
+                }
 
-            return $product->fresh(self::RELATIONS);
-        });
+                return $product->fresh(self::RELATIONS);
+            });
+        } catch (Throwable $exception) {
+            $this->deleteCloudinaryImages($uploadedPublicIds, false);
+
+            throw $exception;
+        }
 
         if ($hasImages) {
             $this->deleteCloudinaryImages(array_diff($oldImagePublicIds, $newImagePublicIds), false);
         }
 
         return $updatedProduct;
+    }
+
+    private function uploadInlineProductImages(array $data): array
+    {
+        if (! array_key_exists('images', $data) || ! is_array($data['images'])) {
+            return [$data, []];
+        }
+
+        $uploadedPublicIds = [];
+
+        try {
+            foreach ($data['images'] as &$image) {
+                if (! isset($image['image'])) {
+                    continue;
+                }
+
+                $uploaded = $this->cloudinaryService->uploadProductImage($image['image']);
+                $image['image_url'] = $uploaded['secure_url'];
+                $image['public_id'] = $uploaded['public_id'];
+                $uploadedPublicIds[] = $uploaded['public_id'];
+                unset($image['image']);
+            }
+            unset($image);
+        } catch (Throwable $exception) {
+            $this->deleteCloudinaryImages($uploadedPublicIds, false);
+
+            throw $exception;
+        }
+
+        return [$data, $uploadedPublicIds];
     }
 
     public function delete(Product $product): void
@@ -450,7 +518,7 @@ class ProductService
         foreach (array_unique(array_filter($publicIds)) as $publicId) {
             try {
                 $this->cloudinaryService->deleteImage($publicId);
-            } catch (\Throwable $exception) {
+            } catch (Throwable $exception) {
                 if ($throw) {
                     throw $exception;
                 }
@@ -611,6 +679,10 @@ class ProductService
                 'logo' => $product->brand->logo,
             ] : null,
             'rating' => $this->loadedAttribute($product, 'rating'),
+            'total_quantity' => $product->total_quantity,
+            'total_reserved' => $product->total_reserved,
+            'available_quantity' => $product->available_quantity,
+            'in_stock' => $product->in_stock,
         ];
     }
 
@@ -675,6 +747,14 @@ class ProductService
     private function productColumns(): array
     {
         return $this->cachedProductColumns ??= Schema::connection('bstore_catalog')->getColumnListing('products');
+    }
+
+    private function inventoryTablesAvailable(): bool
+    {
+        return $this->inventoryTablesAvailable ??= (
+            Schema::connection('bstore_catalog')->hasTable('product_variants')
+            && Schema::connection('bstore_catalog')->hasTable('inventories')
+        );
     }
 
     private function brandRelationColumns(): array

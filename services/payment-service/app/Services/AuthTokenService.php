@@ -43,7 +43,7 @@ class AuthTokenService
             || ($decodedPayload['token_type'] ?? null) !== 'access'
             || (isset($decodedPayload['nbf']) && (int) $decodedPayload['nbf'] > Carbon::now()->timestamp)
             || ! isset($decodedPayload['exp'])
-            || (int) $decodedPayload['exp'] < Carbon::now()->timestamp) {
+            || (int) $decodedPayload['exp'] <= Carbon::now()->timestamp) {
             return null;
         }
 
@@ -68,21 +68,21 @@ class AuthTokenService
         $key = trim((string) config('auth.token_key'));
 
         if ($key === '') {
-            throw new RuntimeException('AUTH_TOKEN_KEY is required');
+            throw new RuntimeException('Bắt buộc phải cấu hình AUTH_TOKEN_KEY.');
         }
 
         if (str_starts_with($key, 'base64:')) {
             $decoded = base64_decode(substr($key, 7), true);
 
             if ($decoded === false) {
-                throw new RuntimeException('AUTH_TOKEN_KEY is not valid base64');
+                throw new RuntimeException('AUTH_TOKEN_KEY không phải chuỗi base64 hợp lệ.');
             }
 
             $key = $decoded;
         }
 
         if (strlen($key) < 32) {
-            throw new RuntimeException('AUTH_TOKEN_KEY must contain at least 32 bytes');
+            throw new RuntimeException('AUTH_TOKEN_KEY phải chứa ít nhất 32 byte.');
         }
 
         return $key;

@@ -11,8 +11,25 @@ class OrderDiscountService
     /**
      * Resolve discounts under the current database lock and increment usage.
      */
-    public function resolve(array $requestedDiscounts, float $subtotal): array
+    public function resolve(array $requestedDiscounts, float $subtotal, int $customerId): array
     {
+        return $this->resolveDiscounts($requestedDiscounts, $subtotal, $customerId, true);
+    }
+
+    /**
+     * Validate and calculate discounts without consuming a usage.
+     */
+    public function preview(array $requestedDiscounts, float $subtotal, int $customerId): array
+    {
+        return $this->resolveDiscounts($requestedDiscounts, $subtotal, $customerId, false);
+    }
+
+    private function resolveDiscounts(
+        array $requestedDiscounts,
+        float $subtotal,
+        int $customerId,
+        bool $consume,
+    ): array {
         if ($requestedDiscounts === []) {
             return [];
         }
@@ -27,7 +44,10 @@ class OrderDiscountService
         $seen = [];
 
         foreach ($requestedDiscounts as $requested) {
-            $query = Discount::query()->lockForUpdate();
+            $query = Discount::query();
+            if ($consume) {
+                $query->lockForUpdate();
+            }
             $discountId = (int) ($requested['discount_id'] ?? 0);
             $discountCode = trim((string) ($requested['discount_code'] ?? ''));
 
@@ -56,15 +76,22 @@ class OrderDiscountService
             }
 
             $seen[$discount->id] = true;
-            $this->ensureUsable($discount, $subtotal);
+            $this->ensureUsable($discount, $subtotal, $customerId);
 
             $amount = match (strtolower((string) $discount->type)) {
                 'percent', 'percentage' => $subtotal * min(max((float) $discount->value, 0), 100) / 100,
-                'fixed', 'amount', 'flat' => max((float) $discount->value, 0),
+                'fixed', 'amount', 'flat', 'fixed_amount' => max((float) $discount->value, 0),
                 default => throw ValidationException::withMessages([
                     'discounts' => ["Loai ma giam gia {$discount->code} khong duoc ho tro"],
                 ]),
             };
+
+            if (
+                in_array(strtolower((string) $discount->type), ['percent', 'percentage'], true)
+                && $discount->max_discount_amount !== null
+            ) {
+                $amount = min($amount, (float) $discount->max_discount_amount);
+            }
 
             $resolved[] = [
                 'discount_id' => (int) $discount->id,
@@ -72,8 +99,10 @@ class OrderDiscountService
                 'discount_amount' => min($amount, max($subtotal, 0)),
             ];
 
-            $discount->used_count = (int) $discount->used_count + 1;
-            $discount->save();
+            if ($consume) {
+                $discount->used_count = (int) $discount->used_count + 1;
+                $discount->save();
+            }
         }
 
         $remaining = max($subtotal, 0);
@@ -86,7 +115,7 @@ class OrderDiscountService
         })->all();
     }
 
-    private function ensureUsable(Discount $discount, float $subtotal): void
+    private function ensureUsable(Discount $discount, float $subtotal, int $customerId): void
     {
         if (strtolower((string) $discount->status) !== 'active') {
             throw ValidationException::withMessages([
@@ -118,6 +147,18 @@ class OrderDiscountService
             throw ValidationException::withMessages([
                 'discounts' => ["Ma giam gia {$discount->code} da het luot su dung"],
             ]);
+        }
+
+        if ((int) $discount->usage_limit_per_customer > 0) {
+            $customerUsage = $discount->orderDiscounts()
+                ->whereHas('order', fn ($query) => $query->where('user_id', $customerId))
+                ->count();
+
+            if ($customerUsage >= (int) $discount->usage_limit_per_customer) {
+                throw ValidationException::withMessages([
+                    'discounts' => ["Khach hang da het luot su dung ma {$discount->code}"],
+                ]);
+            }
         }
     }
 }

@@ -38,8 +38,9 @@ class GatewayController extends Controller
     ];
 
     private const ORDER_ADMIN_PATH_PATTERNS = [
-        '#^admin/orders(?:/[0-9]+)?(?:/(?:assign|status|cancel/(?:approve|reject)))?$#',
+        '#^admin/orders(?:/[0-9]+)?(?:/(?:assign|status|payment-status|cancel/(?:approve|reject)|return/(?:approved|received|completed|rejected)))?$#',
         '#^admin/warranty-requests(?:/[0-9]+)?(?:/(?:approve|reject|processing|complete))?$#',
+        '#^admin/discount-codes(?:/[0-9]+)?(?:/deactivate)?$#',
     ];
 
     private const ROUTE_MAP = [
@@ -106,7 +107,7 @@ class GatewayController extends Controller
         if ($normalizedPath === 'internal' || str_starts_with($normalizedPath, 'internal/')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Not found',
+                'message' => 'Không tìm thấy tài nguyên.',
             ], 404);
         }
 
@@ -119,17 +120,44 @@ class GatewayController extends Controller
             'has_authorization' => $request->hasHeader('Authorization'),
         ]);
 
-        if (! $isPublic && $request->bearerToken() && ! $this->accessTokenIsActive($request->bearerToken())) {
-            Log::notice('gateway.auth.rejected', [
-                'method' => $request->method(),
-                'path' => $normalizedPath,
-                'reason' => 'inactive_or_invalid_access_token',
-            ]);
+        if (! $isPublic) {
+            $token = $request->bearerToken();
 
-            return response()->json([
-                'success' => false,
-                'message' => 'Phien dang nhap khong con hieu luc',
-            ], 401);
+            if (! $token) {
+                return $this->tokenInvalidResponse();
+            }
+
+            $accessToken = $this->introspectAccessToken($token);
+
+            if ($accessToken === null) {
+                Log::warning('gateway.auth.unavailable', [
+                    'method' => $request->method(),
+                    'path' => $normalizedPath,
+                ]);
+
+                return response()->json([
+                    'message' => 'Dịch vụ xác thực hiện không khả dụng.',
+                    'code' => 'AUTH_SERVICE_UNAVAILABLE',
+                ], 503);
+            }
+
+            if ($accessToken === false) {
+                Log::notice('gateway.auth.rejected', [
+                    'method' => $request->method(),
+                    'path' => $normalizedPath,
+                    'reason' => 'inactive_or_invalid_access_token',
+                ]);
+
+                return $this->tokenInvalidResponse();
+            }
+
+            if (str_starts_with($normalizedPath, 'admin/')
+                && strtoupper((string) ($accessToken['role'] ?? '')) === 'CUSTOMER') {
+                return response()->json([
+                    'message' => 'Bạn không có quyền thực hiện chức năng này.',
+                    'code' => 'FORBIDDEN',
+                ], 403);
+            }
         }
 
         $serviceName = $this->resolveServiceName($path);
@@ -190,8 +218,8 @@ class GatewayController extends Controller
             $serviceResponse = $pending->send($request->method(), $targetUrl, $options);
         } catch (ConnectionException) {
             return response()->json([
-                'success' => false,
-                'message' => "Service {$serviceName} khong kha dung",
+                'message' => 'Dịch vụ hiện không khả dụng.',
+                'code' => 'SERVICE_UNAVAILABLE',
             ], 503);
         }
 
@@ -269,13 +297,16 @@ class GatewayController extends Controller
             ->all();
     }
 
-    private function accessTokenIsActive(string $token): bool
+    /**
+     * @return array<string, mixed>|false|null Active token data, invalid token, or unavailable auth service.
+     */
+    private function introspectAccessToken(string $token): array|false|null
     {
         $authUrl = rtrim((string) config('microservices.services.auth.url'), '/');
         $internalToken = (string) config('microservices.internal_token');
 
         if ($authUrl === '' || $internalToken === '') {
-            return false;
+            return null;
         }
 
         try {
@@ -285,10 +316,30 @@ class GatewayController extends Controller
                 ->timeout((int) config('microservices.timeout', 5))
                 ->post($authUrl.'/api/internal/auth/introspect', ['token' => $token]);
         } catch (ConnectionException) {
+            return null;
+        }
+
+        if ($response->serverError()) {
+            return null;
+        }
+
+        if (! $response->successful()) {
+            return null;
+        }
+
+        if (! (bool) data_get($response->json(), 'data.active', false)) {
             return false;
         }
 
-        return $response->successful() && (bool) data_get($response->json(), 'data.active', false);
+        return (array) data_get($response->json(), 'data', []);
+    }
+
+    private function tokenInvalidResponse(): JsonResponse
+    {
+        return response()->json([
+            'message' => 'Bạn chưa đăng nhập.',
+            'code' => 'TOKEN_INVALID',
+        ], 401);
     }
 
     private function multipartPayload(Request $request): array

@@ -52,6 +52,9 @@ beforeEach(function () {
         $table->decimal('shipping_fee', 15, 2)->default(0);
         $table->decimal('final_amount', 15, 2)->default(0);
         $table->string('status', 20)->nullable()->default('pending');
+        $table->string('cancel_request_status', 20)->default('none');
+        $table->string('refund_status', 20)->default('none');
+        $table->string('return_status', 20)->default('none');
         $table->string('payment_status', 20)->nullable()->default('unpaid');
         $table->timestamp('paid_at')->nullable();
         $table->unsignedBigInteger('assigned_staff_id')->nullable()->index();
@@ -59,6 +62,7 @@ beforeEach(function () {
         $table->timestamp('assigned_at')->nullable();
         $table->text('processing_note')->nullable();
         $table->text('cancel_reason')->nullable();
+        $table->text('return_reason')->nullable();
         $table->text('note')->nullable();
         $table->dateTime('created_at')->nullable();
         $table->dateTime('updated_at')->nullable();
@@ -200,6 +204,9 @@ function insertWorkflowOrder(array $overrides = []): int
         'shipping_fee' => $overrides['shipping_fee'] ?? 0,
         'final_amount' => $overrides['final_amount'] ?? 100000,
         'status' => $overrides['status'] ?? 'pending',
+        'cancel_request_status' => $overrides['cancel_request_status'] ?? 'none',
+        'refund_status' => $overrides['refund_status'] ?? 'none',
+        'return_status' => $overrides['return_status'] ?? 'none',
         'payment_status' => $overrides['payment_status'] ?? 'unpaid',
         'assigned_staff_id' => $overrides['assigned_staff_id'] ?? null,
         'assigned_staff_name' => $overrides['assigned_staff_name'] ?? null,
@@ -281,19 +288,76 @@ test('customer cancel request can be approved and creates refund for paid online
             'reason' => 'Khach doi y',
         ])
         ->assertOk()
-        ->assertJsonPath('data.status', 'pending_cancel');
+        ->assertJsonPath('data.status', 'processing')
+        ->assertJsonPath('data.cancel_request_status', 'pending');
 
     $this->withToken(orderWorkflowToken(2, 'STAFF', 'staff2@example.com'))
         ->putJson("/api/admin/orders/{$orderId}/cancel/approve", [
             'admin_note' => 'Dong y huy',
         ])
         ->assertOk()
-        ->assertJsonPath('data.status', 'cancelled');
+        ->assertJsonPath('data.status', 'cancelled')
+        ->assertJsonPath('data.cancel_request_status', 'approved')
+        ->assertJsonPath('data.refund_status', 'pending');
 
     $this->assertDatabaseHas('refund_requests', [
         'order_id' => $orderId,
         'customer_id' => 10,
         'status' => 'pending',
+    ], 'bstore_order');
+});
+
+test('unpaid order is cancelled immediately but shipping order cannot be cancelled', function () {
+    $pendingOrderId = insertWorkflowOrder(['status' => 'pending', 'payment_status' => 'unpaid']);
+    $shippingOrderId = insertWorkflowOrder(['status' => 'shipping', 'payment_status' => 'unpaid']);
+    $customer = orderWorkflowToken(10, 'CUSTOMER', 'customer@example.com');
+
+    $this->withToken($customer)->postJson("/api/customer/orders/{$pendingOrderId}/cancel", [
+        'reason' => 'Khong con nhu cau',
+    ])->assertOk()
+        ->assertJsonPath('data.status', 'cancelled')
+        ->assertJsonPath('data.cancel_request_status', 'approved')
+        ->assertJsonPath('data.refund_status', 'none');
+
+    $this->withToken($customer)->postJson("/api/customer/orders/{$shippingOrderId}/cancel", [
+        'reason' => 'Khong con nhu cau',
+    ])->assertUnprocessable();
+});
+
+test('delivered order can complete normally and return follows its own workflow', function () {
+    $normalOrderId = insertWorkflowOrder([
+        'status' => 'delivered',
+        'assigned_staff_id' => 2,
+        'assigned_staff_name' => 'Staff Two',
+    ]);
+    $returnOrderId = insertWorkflowOrder([
+        'status' => 'delivered',
+        'assigned_staff_id' => 2,
+        'assigned_staff_name' => 'Staff Two',
+    ]);
+    $staff = orderWorkflowToken(2, 'STAFF', 'staff2@example.com');
+
+    $this->withToken($staff)->patchJson("/api/admin/orders/{$normalOrderId}/status", [
+        'status' => 'completed',
+    ])->assertOk()->assertJsonPath('data.status', 'completed');
+
+    $this->withToken(orderWorkflowToken(10, 'CUSTOMER', 'customer@example.com'))
+        ->postJson("/api/customer/orders/{$returnOrderId}/return", ['reason' => 'San pham bi loi'])
+        ->assertOk()
+        ->assertJsonPath('data.status', 'delivered')
+        ->assertJsonPath('data.return_status', 'pending');
+
+    foreach (['approved', 'received', 'completed'] as $returnStatus) {
+        $this->withToken($staff)
+            ->putJson("/api/admin/orders/{$returnOrderId}/return/{$returnStatus}")
+            ->assertOk()
+            ->assertJsonPath('data.return_status', $returnStatus);
+    }
+
+    $this->assertDatabaseHas('orders', [
+        'id' => $returnOrderId,
+        'status' => 'completed',
+        'return_status' => 'completed',
     ], 'bstore_order');
 });
 
@@ -338,7 +402,8 @@ test('refund flow is restricted to assigned staff or admin', function () {
 
     $this->assertDatabaseHas('orders', [
         'id' => $orderId,
-        'status' => 'refunded',
+        'status' => 'delivered',
+        'refund_status' => 'completed',
         'payment_status' => 'refunded',
     ], 'bstore_order');
 

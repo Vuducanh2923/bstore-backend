@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Inventory;
 use App\Models\InventoryReservation;
 use App\Models\InventoryTransaction;
+use App\Models\ProductImage;
 use App\Models\ProductVariant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -14,11 +15,35 @@ use Illuminate\Validation\Rule;
 
 class InventoryController extends Controller
 {
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
+        $perPage = min(100, max(1, (int) $request->query('per_page', $request->query('limit', 25))));
+        $inventories = Inventory::query()
+            ->with([
+                'variant:id,product_id,color,ram,storage,status',
+                'variant.product' => fn ($query) => $query
+                    ->select(['id', 'name', 'slug'])
+                    ->addSelect([
+                        'thumbnail' => ProductImage::query()
+                            ->select('image_url')
+                            ->whereColumn('product_images.product_id', 'products.id')
+                            ->orderByDesc('is_thumbnail')
+                            ->orderBy('id')
+                            ->limit(1),
+                    ]),
+            ])
+            ->orderByDesc('id')
+            ->paginate($perPage, ['id', 'product_variant_id', 'quantity', 'reserved_quantity'], 'page', max(1, (int) $request->query('page', 1)));
+
         return response()->json([
             'success' => true,
-            'data' => Inventory::query()->with('variant.product')->orderByDesc('id')->get(),
+            'data' => $inventories->items(),
+            'pagination' => [
+                'page' => $inventories->currentPage(),
+                'limit' => $inventories->perPage(),
+                'total' => $inventories->total(),
+                'totalPages' => $inventories->lastPage(),
+            ],
         ]);
     }
 

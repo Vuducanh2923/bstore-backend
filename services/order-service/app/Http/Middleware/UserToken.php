@@ -16,9 +16,8 @@ class UserToken
 
         if (! $payload || empty($payload['sub'])) {
             return response()->json([
-                'success' => false,
-                'message' => 'Chua dang nhap',
-                'data' => null,
+                'message' => 'Bạn chưa đăng nhập.',
+                'code' => 'TOKEN_INVALID',
             ], 401);
         }
 
@@ -26,9 +25,8 @@ class UserToken
 
         if (! in_array($role, ['ADMIN', 'STAFF', 'CUSTOMER'], true)) {
             return response()->json([
-                'success' => false,
-                'message' => 'Khong co quyen truy cap',
-                'data' => null,
+                'message' => 'Bạn không có quyền thực hiện chức năng này.',
+                'code' => 'FORBIDDEN',
             ], 403);
         }
 

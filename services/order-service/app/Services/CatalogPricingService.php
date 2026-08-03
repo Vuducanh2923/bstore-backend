@@ -112,18 +112,18 @@ class CatalogPricingService
             $schema = Schema::connection('bstore_catalog');
 
             if (! $schema->hasTable('products') || ! $schema->hasTable('product_variants')) {
-                throw new \RuntimeException('Catalog tables are missing.');
+                throw new \RuntimeException('Thiếu bảng dữ liệu danh mục sản phẩm.');
             }
 
             $productColumns = $schema->getColumnListing('products');
             $variantColumns = $schema->getColumnListing('product_variants');
 
             if (! in_array('product_id', $variantColumns, true)) {
-                throw new \RuntimeException('Catalog variant product relation is missing.');
+                throw new \RuntimeException('Thiếu quan hệ giữa biến thể và sản phẩm.');
             }
 
             if (! in_array('price', $productColumns, true) && ! in_array('price', $variantColumns, true)) {
-                throw new \RuntimeException('Catalog price is missing.');
+                throw new \RuntimeException('Thiếu giá sản phẩm trong danh mục.');
             }
 
             return [$productColumns, $variantColumns];

@@ -108,7 +108,7 @@ test('customer orders are filtered by token user and include vietnamese status l
         ->assertOk()
         ->assertJsonCount(2, 'data')
         ->assertJsonPath('data.0.id', $newerOrderId)
-        ->assertJsonPath('data.0.status_label', 'Đang giao hàng')
+        ->assertJsonPath('data.0.status_label', 'Đang vận chuyển')
         ->assertJsonPath('data.0.payment_status_label', 'Đã thanh toán')
         ->assertJsonPath('data.1.id', $olderOrderId);
 });

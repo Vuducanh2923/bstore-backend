@@ -157,6 +157,45 @@ test('admin can create a product with a cloudinary product image public id', fun
     ], 'bstore_catalog');
 });
 
+test('admin can create a product by uploading an image directly', function () {
+    $this->mock(CloudinaryService::class, function ($mock) {
+        $mock->shouldReceive('uploadProductImage')
+            ->once()
+            ->andReturn([
+                'secure_url' => 'https://res.cloudinary.com/demo/image/upload/v1/bstore/products/direct.jpg',
+                'public_id' => 'bstore/products/direct',
+            ]);
+    });
+
+    $this->post('/api/products', [
+        ...cloudinaryProductPayload('Lenovo Tab Direct Upload'),
+        'images' => [
+            [
+                'image' => fakeProductImage(),
+                'is_thumbnail' => '1',
+            ],
+        ],
+    ])
+        ->assertCreated()
+        ->assertJsonPath('data.images.0.image_url', 'https://res.cloudinary.com/demo/image/upload/v1/bstore/products/direct.jpg')
+        ->assertJsonPath('data.images.0.public_id', 'bstore/products/direct');
+
+    $this->assertDatabaseHas('product_images', [
+        'image_url' => 'https://res.cloudinary.com/demo/image/upload/v1/bstore/products/direct.jpg',
+        'public_id' => 'bstore/products/direct',
+        'is_thumbnail' => true,
+    ], 'bstore_catalog');
+});
+
+test('each product image requires either a url or uploaded file', function () {
+    $this->postJson('/api/products', [
+        ...cloudinaryProductPayload('Lenovo Tab Missing Image'),
+        'images' => [
+            ['is_thumbnail' => true],
+        ],
+    ])->assertUnprocessable();
+});
+
 test('admin replacing product images deletes old cloudinary images', function () {
     $product = Product::create(cloudinaryProductPayload('Lenovo Tab P12'));
     ProductImage::create([

@@ -4,9 +4,12 @@ use App\Models\AuthSession;
 use App\Models\User;
 use App\Services\AuthTokenService;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
+
+afterEach(fn () => Carbon::setTestNow());
 
 beforeEach(function () {
     config([
@@ -90,6 +93,15 @@ function loginSessionTestUser($test, User $user): array
 
     return $data;
 }
+
+test('access token with exp equal to now is expired', function () {
+    Carbon::setTestNow('2026-08-03 12:00:00');
+    $credentials = loginSessionTestUser($this, createSessionTestUser());
+
+    Carbon::setTestNow('2026-08-03 12:15:00');
+
+    $this->withToken($credentials['token'])->getJson('/api/users')->assertUnauthorized();
+});
 
 test('refresh token is hashed and rotated and invalidates the previous token pair', function () {
     $admin = createSessionTestUser();
@@ -242,7 +254,7 @@ test('token issuance fails closed when auth token key is missing', function () {
     config(['auth.token_key' => null]);
 
     expect(fn () => app(AuthTokenService::class)->issue($admin))
-        ->toThrow(RuntimeException::class, 'AUTH_TOKEN_KEY is required.');
+        ->toThrow(RuntimeException::class, 'Bắt buộc phải cấu hình AUTH_TOKEN_KEY.');
 
     expect(AuthSession::query()->count())->toBe(0);
 });

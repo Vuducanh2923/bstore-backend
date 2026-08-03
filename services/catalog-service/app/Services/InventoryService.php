@@ -173,7 +173,7 @@ class InventoryService
             $reservations = $this->reservationRows($reference);
 
             if ($reservations->isEmpty()) {
-                throw new InventoryReservationException('Inventory reservation was not found', 404);
+                throw new InventoryReservationException('Không tìm thấy yêu cầu giữ tồn kho.', 404);
             }
 
             $currentStatus = $this->singleStatus($reservations);
@@ -234,7 +234,7 @@ class InventoryService
             $quantity = (int) ($item['quantity'] ?? 0);
 
             if ($variantId < 1 || $quantity < 1 || isset($normalized[$variantId])) {
-                throw new InventoryReservationException('Invalid or duplicated reservation item', 422);
+                throw new InventoryReservationException('Sản phẩm giữ tồn kho không hợp lệ hoặc bị trùng lặp.', 422);
             }
 
             $normalized[$variantId] = $quantity;

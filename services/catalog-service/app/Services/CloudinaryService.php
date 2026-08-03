@@ -60,7 +60,7 @@ class CloudinaryService
         $result = (string) ($response['result'] ?? '');
 
         if ($result !== '' && ! in_array($result, ['ok', 'not found'], true)) {
-            throw new RuntimeException("Cloudinary delete failed: {$result}");
+            throw new RuntimeException("Xóa ảnh trên Cloudinary thất bại: {$result}");
         }
     }
 
@@ -69,7 +69,7 @@ class CloudinaryService
         $path = $file->getRealPath();
 
         if (! $path) {
-            throw new RuntimeException('Unable to read uploaded file.');
+            throw new RuntimeException('Không thể đọc tệp đã tải lên.');
         }
 
         $response = $this->client()->uploadApi()->upload($path, [
@@ -84,7 +84,7 @@ class CloudinaryService
         $publicId = (string) ($response['public_id'] ?? '');
 
         if ($secureUrl === '' || $publicId === '') {
-            throw new RuntimeException('Cloudinary upload response is missing secure_url or public_id.');
+            throw new RuntimeException('Phản hồi tải ảnh của Cloudinary thiếu secure_url hoặc public_id.');
         }
 
         return [
@@ -111,7 +111,7 @@ class CloudinaryService
         $apiSecret = trim((string) ($config['api_secret'] ?? ''));
 
         if ($cloudName === '' || $apiKey === '' || $apiSecret === '') {
-            throw new RuntimeException('Cloudinary credentials are not configured.');
+            throw new RuntimeException('Thông tin xác thực Cloudinary chưa được cấu hình.');
         }
 
         return $this->client = new Cloudinary([

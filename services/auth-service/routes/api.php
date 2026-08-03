@@ -12,13 +12,13 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/docs/openapi.json', [SwaggerController::class, 'json'])->name('swagger.openapi');
 
-Route::post('/auth/register', [AuthController::class, 'register']);
-Route::post('/auth/login', [AuthController::class, 'login']);
-Route::post('/auth/refresh', [AuthController::class, 'refresh']);
+Route::post('/auth/register', [AuthController::class, 'register'])->middleware('throttle:register');
+Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:login');
+Route::post('/auth/refresh', [AuthController::class, 'refresh'])->middleware('throttle:refresh-token');
 Route::post('/auth/logout', [AuthController::class, 'logout']);
 Route::post('/auth/verify-register-otp', [AuthController::class, 'verifyRegisterOtp']);
 Route::post('/auth/resend-register-otp', [AuthController::class, 'resendRegisterOtp']);
-Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
+Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:forgot-password');
 Route::post('/auth/verify-forgot-password-otp', [AuthController::class, 'verifyForgotPasswordOtp']);
 Route::post('/auth/reset-password', [AuthController::class, 'resetPassword']);
 

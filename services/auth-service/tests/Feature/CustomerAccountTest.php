@@ -104,6 +104,54 @@ function createAuthUserForCustomerAccount(string $role, array $overrides = []): 
     return $user->load('role');
 }
 
+test('legacy plaintext md5 and sha1 password accounts must reset their password', function (string $storedPassword) {
+    $user = createAuthUserForCustomerAccount(User::ROLE_CUSTOMER, [
+        'email' => 'legacy@example.com',
+        'password' => $storedPassword,
+    ]);
+
+    $this->postJson('/api/auth/login', [
+        'email' => $user->email,
+        'password' => 'secret123',
+    ])->assertForbidden()
+        ->assertJsonPath('message', 'Tai khoan su dung mat khau cu. Vui long dat lai mat khau.');
+
+    expect($user->fresh()->password)->toBe($storedPassword);
+})->with([
+    'plaintext' => 'secret123',
+    'md5' => md5('secret123'),
+    'sha1' => sha1('secret123'),
+]);
+
+test('login rate limit returns 429 and Retry-After after five requests per IP', function () {
+    for ($attempt = 1; $attempt <= 5; $attempt++) {
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.10'])
+            ->postJson('/api/auth/login', [
+                'email' => 'missing@example.com',
+                'password' => 'secret123',
+            ])->assertUnauthorized();
+    }
+
+    $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.10'])
+        ->postJson('/api/auth/login', [
+            'email' => 'missing@example.com',
+            'password' => 'secret123',
+        ])->assertStatus(429)
+        ->assertHeader('Retry-After');
+});
+
+test('argon2id password accounts continue to authenticate', function () {
+    $user = createAuthUserForCustomerAccount(User::ROLE_CUSTOMER, [
+        'email' => 'argon@example.com',
+        'password' => password_hash('secret123', PASSWORD_ARGON2ID),
+    ]);
+
+    $this->postJson('/api/auth/login', [
+        'email' => $user->email,
+        'password' => 'secret123',
+    ])->assertOk()->assertJsonPath('data.id', $user->id);
+});
+
 test('customer can update profile change password and manage default address', function () {
     $customer = createAuthUserForCustomerAccount(User::ROLE_CUSTOMER, [
         'email' => 'customer@example.com',

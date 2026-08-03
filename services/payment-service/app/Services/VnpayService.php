@@ -18,6 +18,7 @@ class VnpayService
     ];
 
     public function __construct(
+
         private readonly PaymentService $payments,
         private readonly OrderServiceClient $orders,
     ) {}
@@ -187,11 +188,11 @@ class VnpayService
     private function ipnResult(string $code): array
     {
         return ['response' => match ($code) {
-            '00' => ['RspCode' => '00', 'Message' => 'Confirm Success'],
-            '01' => ['RspCode' => '01', 'Message' => 'Order not found'],
-            '04' => ['RspCode' => '04', 'Message' => 'Invalid amount'],
-            '97' => ['RspCode' => '97', 'Message' => 'Invalid signature'],
-            default => ['RspCode' => '99', 'Message' => 'Unknown error'],
+            '00' => ['RspCode' => '00', 'Message' => 'Xác nhận thành công.'],
+            '01' => ['RspCode' => '01', 'Message' => 'Không tìm thấy đơn hàng.'],
+            '04' => ['RspCode' => '04', 'Message' => 'Số tiền không hợp lệ.'],
+            '97' => ['RspCode' => '97', 'Message' => 'Chữ ký không hợp lệ.'],
+            default => ['RspCode' => '99', 'Message' => 'Đã xảy ra lỗi hệ thống.'],
         }];
     }
 

@@ -58,6 +58,7 @@ Route::middleware('admin.token')->group(function (): void {
         ->whereNumber('id');
 
     Route::post('/products', [ProductController::class, 'store']);
+    Route::post('/products/{id}', [ProductController::class, 'update'])->whereNumber('id');
     Route::put('/products/{id}', [ProductController::class, 'update'])->whereNumber('id');
     Route::patch('/products/{id}', [ProductController::class, 'update'])->whereNumber('id');
     Route::delete('/products/{id}', [ProductController::class, 'destroy'])->whereNumber('id');

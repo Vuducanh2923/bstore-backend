@@ -42,7 +42,7 @@ class CategoryController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Success',
+            'message' => 'Thành công.',
             ...$payload,
         ]);
     }

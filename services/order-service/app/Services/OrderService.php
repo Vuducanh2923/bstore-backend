@@ -145,9 +145,9 @@ class OrderService
             $oldStatus = (string) $order->status;
             $currentStatus = $this->normalizeStatus($oldStatus);
 
-            if ($currentStatus === Order::STATUS_DELIVERED) {
+            if ($currentStatus === Order::STATUS_COMPLETED) {
                 throw ValidationException::withMessages([
-                    'status' => ['Don hang Delivered da khoa chinh sua trang thai'],
+                    'status' => ['Don hang Completed da khoa chinh sua trang thai'],
                 ]);
             }
 
@@ -213,6 +213,16 @@ class OrderService
 
             $oldPaymentStatus = strtolower((string) $order->payment_status);
             $newPaymentStatus = strtolower((string) $data['payment_status']);
+
+            if (
+                strtolower((string) $order->status) === Order::STATUS_CANCELLED
+                && $newPaymentStatus === 'paid'
+            ) {
+                throw ValidationException::withMessages([
+                    'payment_status' => ['Khong the xac nhan thanh toan cho don hang da huy'],
+                ]);
+            }
+
             $this->ensurePaymentTransition($oldPaymentStatus, $newPaymentStatus);
 
             if ($newPaymentStatus === 'paid') {
@@ -318,16 +328,29 @@ class OrderService
                 ]);
             }
 
+            if ($order->cancel_request_status === Order::CANCEL_REQUEST_PENDING) {
+                throw ValidationException::withMessages([
+                    'cancel_request_status' => ['Yeu cau huy don dang cho duyet'],
+                ]);
+            }
+
             $oldStatus = (string) $order->status;
-            $order->status = Order::STATUS_PENDING_CANCEL;
             $order->cancel_reason = $reason;
+
+            if (strtolower((string) $order->payment_status) === 'paid') {
+                $order->cancel_request_status = Order::CANCEL_REQUEST_PENDING;
+            } else {
+                $this->reverseInventoryForCancellation($order);
+                $order->cancel_request_status = Order::CANCEL_REQUEST_APPROVED;
+                $order->status = Order::STATUS_CANCELLED;
+            }
             $order->save();
 
             $this->histories->record(
                 (int) $order->id,
                 'cancel_requested',
                 $oldStatus,
-                Order::STATUS_PENDING_CANCEL,
+                (string) $order->status,
                 null,
                 $reason,
             );
@@ -353,9 +376,9 @@ class OrderService
                 return null;
             }
 
-            if ($this->normalizeStatus((string) $order->status) !== Order::STATUS_PENDING_CANCEL) {
+            if ($order->cancel_request_status !== Order::CANCEL_REQUEST_PENDING) {
                 throw ValidationException::withMessages([
-                    'status' => ['Don hang khong o trang thai cho duyet huy'],
+                    'cancel_request_status' => ['Don hang khong co yeu cau huy dang cho duyet'],
                 ]);
             }
 
@@ -364,7 +387,12 @@ class OrderService
 
             $oldStatus = (string) $order->status;
             $this->reverseInventoryForCancellation($order);
+            $order->cancel_request_status = Order::CANCEL_REQUEST_APPROVED;
             $order->status = Order::STATUS_CANCELLED;
+
+            if (strtolower((string) $order->payment_status) === 'paid') {
+                $order->refund_status = Order::REFUND_PENDING;
+            }
             $order->save();
 
             $this->histories->record(
@@ -376,7 +404,7 @@ class OrderService
                 $note,
             );
 
-            if ($this->isOnlinePaid($order)) {
+            if (strtolower((string) $order->payment_status) === 'paid') {
                 $refundCreated = $this->createRefundForCancelledOrder($order, $note);
             }
 
@@ -409,9 +437,9 @@ class OrderService
                 return null;
             }
 
-            if ($this->normalizeStatus((string) $order->status) !== Order::STATUS_PENDING_CANCEL) {
+            if ($order->cancel_request_status !== Order::CANCEL_REQUEST_PENDING) {
                 throw ValidationException::withMessages([
-                    'status' => ['Don hang khong o trang thai cho duyet huy'],
+                    'cancel_request_status' => ['Don hang khong co yeu cau huy dang cho duyet'],
                 ]);
             }
 
@@ -419,23 +447,14 @@ class OrderService
             $this->ensureCanHandleOrder($order, $actor, allowUnassignedStaff: true);
 
             $oldStatus = (string) $order->status;
-            $previousStatus = $this->normalizeStatus(
-                $this->histories->previousStatusBeforeCancel((int) $order->id)
-                    ?? ((int) ($order->getAttribute('assigned_staff_id') ?? 0) > 0 ? Order::STATUS_PROCESSING : Order::STATUS_PENDING)
-            );
-
-            if (! in_array($previousStatus, [Order::STATUS_PENDING, Order::STATUS_PROCESSING], true)) {
-                $previousStatus = Order::STATUS_PENDING;
-            }
-
-            $order->status = $previousStatus;
+            $order->cancel_request_status = Order::CANCEL_REQUEST_REJECTED;
             $order->save();
 
             $this->histories->record(
                 (int) $order->id,
                 'cancel_rejected',
                 $oldStatus,
-                $previousStatus,
+                $oldStatus,
                 $actor,
                 $note,
             );
@@ -456,6 +475,69 @@ class OrderService
         return $order;
     }
 
+    public function requestReturn(int $customerId, int $orderId, string $reason): ?Order
+    {
+        return DB::connection('bstore_order')->transaction(function () use ($customerId, $orderId, $reason) {
+            $order = Order::query()->where('user_id', $customerId)->lockForUpdate()->find($orderId);
+
+            if (! $order) {
+                return null;
+            }
+            if ($order->status !== Order::STATUS_DELIVERED) {
+                throw ValidationException::withMessages(['status' => ['Chi duoc yeu cau tra hang sau khi da giao hang']]);
+            }
+            if (! in_array($order->return_status, [Order::RETURN_NONE, Order::RETURN_REJECTED], true)) {
+                throw ValidationException::withMessages(['return_status' => ['Yeu cau tra hang da ton tai']]);
+            }
+
+            $order->return_status = Order::RETURN_PENDING;
+            $order->return_reason = trim($reason);
+            $order->save();
+            $this->histories->record($order->id, 'return_requested', $order->status, $order->status, null, $reason);
+
+            return $order->fresh('items') ?? $order;
+        });
+    }
+
+    public function updateReturnStatus(int $orderId, string $nextStatus, array $actor, ?string $note = null): ?Order
+    {
+        return DB::connection('bstore_order')->transaction(function () use ($orderId, $nextStatus, $actor, $note) {
+            $order = Order::with('items')->lockForUpdate()->find($orderId);
+
+            if (! $order) {
+                return null;
+            }
+
+            $transitions = [
+                Order::RETURN_PENDING => [Order::RETURN_APPROVED, Order::RETURN_REJECTED],
+                Order::RETURN_APPROVED => [Order::RETURN_RECEIVED],
+                Order::RETURN_RECEIVED => [Order::RETURN_COMPLETED],
+            ];
+
+            if (! in_array($nextStatus, $transitions[$order->return_status] ?? [], true)) {
+                throw ValidationException::withMessages(['return_status' => ['Chuyen trang thai tra hang khong hop le']]);
+            }
+
+            $actor = $this->users->actor($actor);
+            $oldReturnStatus = (string) $order->return_status;
+            $order->return_status = $nextStatus;
+            if ($nextStatus === Order::RETURN_COMPLETED) {
+                $order->status = Order::STATUS_COMPLETED;
+            }
+            $order->save();
+            $this->histories->record(
+                $order->id,
+                'return_'.$nextStatus,
+                $oldReturnStatus,
+                $nextStatus,
+                $actor,
+                $note,
+            );
+
+            return $order->fresh('items') ?? $order;
+        });
+    }
+
     public function create(array $data): Order
     {
         $items = $this->catalogPricingService->resolveOrderItems($data['items'] ?? []);
@@ -467,7 +549,11 @@ class OrderService
         try {
             $order = DB::connection('bstore_order')->transaction(function () use ($data, $items, $requestedDiscounts, $orderCode, $inventoryReference) {
                 $itemTotal = (float) collect($items)->sum(fn (array $item): float => $this->subtotal($item));
-                $discounts = $this->discountService->resolve($requestedDiscounts, $itemTotal);
+                $discounts = $this->discountService->resolve(
+                    $requestedDiscounts,
+                    $itemTotal,
+                    (int) $data['user_id'],
+                );
                 $discountTotal = (float) collect($discounts)->sum('discount_amount');
                 $shippingFee = $this->shippingFee($itemTotal);
                 $finalAmount = max($itemTotal - $discountTotal + $shippingFee, 0);
@@ -494,6 +580,9 @@ class OrderService
                     'shipping_fee' => $shippingFee,
                     'final_amount' => $finalAmount,
                     'status' => Order::STATUS_PENDING,
+                    'cancel_request_status' => Order::CANCEL_REQUEST_NONE,
+                    'refund_status' => Order::REFUND_NONE,
+                    'return_status' => Order::RETURN_NONE,
                     'payment_status' => 'unpaid',
                     'cancel_reason' => null,
                     'note' => $data['note'] ?? null,
@@ -545,6 +634,9 @@ class OrderService
             'customer_phone' => $order->receiver_phone,
             'shipping_address' => $order->shipping_address,
             'status' => $order->status,
+            'cancel_request_status' => $order->getAttribute('cancel_request_status') ?? Order::CANCEL_REQUEST_NONE,
+            'refund_status' => $order->getAttribute('refund_status') ?? Order::REFUND_NONE,
+            'return_status' => $order->getAttribute('return_status') ?? Order::RETURN_NONE,
             'payment_status' => $order->payment_status,
             'payment_method' => $order->getAttribute('payment_method'),
             'assigned_staff_id' => $order->getAttribute('assigned_staff_id'),
@@ -552,6 +644,7 @@ class OrderService
             'assigned_at' => $order->getAttribute('assigned_at'),
             'processing_note' => $order->getAttribute('processing_note'),
             'cancel_reason' => $order->getAttribute('cancel_reason'),
+            'return_reason' => $order->getAttribute('return_reason'),
             'subtotal' => $this->money($this->orderSubtotal($order)),
             'discount_amount' => $this->money($order->discount_amount),
             'shipping_fee' => $this->money($order->getAttribute('shipping_fee') ?? 0),
@@ -597,6 +690,9 @@ class OrderService
             'final_amount' => $order->final_amount,
             'status' => $order->status,
             'status_label' => $order->statusLabel(),
+            'cancel_request_status' => $order->getAttribute('cancel_request_status') ?? Order::CANCEL_REQUEST_NONE,
+            'refund_status' => $order->getAttribute('refund_status') ?? Order::REFUND_NONE,
+            'return_status' => $order->getAttribute('return_status') ?? Order::RETURN_NONE,
             'payment_status' => $order->payment_status,
             'payment_status_label' => $order->paymentStatusLabel(),
             'assigned_staff_id' => $order->getAttribute('assigned_staff_id'),
@@ -604,6 +700,7 @@ class OrderService
             'assigned_at' => $order->getAttribute('assigned_at'),
             'processing_note' => $order->getAttribute('processing_note'),
             'cancel_reason' => $order->getAttribute('cancel_reason'),
+            'return_reason' => $order->getAttribute('return_reason'),
             'note' => $order->note,
             'created_at' => $order->created_at,
             'inventory_state' => $order->getAttribute('inventory_state'),
@@ -631,8 +728,7 @@ class OrderService
 
         return [
             'confirmed' => Order::STATUS_PROCESSING,
-            'packing' => Order::STATUS_SHIPPING,
-            'pendingcancel' => Order::STATUS_PENDING_CANCEL,
+            'packing' => Order::STATUS_PROCESSING,
         ][$value] ?? $value;
     }
 
@@ -694,7 +790,7 @@ class OrderService
             'unpaid' => ['pending', 'paid', 'failed'],
             'pending' => ['paid', 'failed'],
             'failed' => ['pending', 'paid'],
-            'paid' => ['refunded'],
+            'paid' => [],
             'refunded' => [],
         ];
 

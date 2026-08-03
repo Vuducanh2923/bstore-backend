@@ -50,6 +50,7 @@ beforeEach(function () {
         $table->decimal('final_amount', 15, 2)->default(0);
         $table->string('status', 20)->nullable()->default('pending');
         $table->string('payment_status', 20)->nullable()->default('unpaid');
+        $table->dateTime('paid_at')->nullable();
         $table->text('cancel_reason')->nullable();
         $table->text('note')->nullable();
         $table->dateTime('created_at')->nullable();
@@ -209,7 +210,7 @@ test('admin can update order status', function () {
 
     $this->withToken(adminOrderTokenForTest())
         ->patchJson("/api/admin/orders/{$orderId}/status", [
-            'status' => 'confirmed',
+            'status' => 'processing',
         ])
         ->assertOk()
         ->assertJsonPath('data.order_id', $orderId)
@@ -242,8 +243,57 @@ test('staff can access and update admin orders', function () {
 
     $this->withToken($staffToken)
         ->patchJson("/api/admin/orders/{$orderId}/status", [
-            'status' => 'confirmed',
+            'status' => 'processing',
         ])
         ->assertOk()
         ->assertJsonPath('data.status', 'processing');
+});
+
+test('admin and staff can confirm an order payment as paid', function (string $role) {
+    $orderId = insertAdminOrderForTest(['status' => 'delivered', 'payment_status' => 'unpaid']);
+
+    $response = $this->withToken(adminOrderTokenForTest($role))
+        ->patchJson("/api/admin/orders/{$orderId}/payment-status", ['payment_status' => 'paid'])
+        ->assertOk()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('data.id', $orderId)
+        ->assertJsonPath('data.status', 'delivered')
+        ->assertJsonPath('data.payment_status', 'paid');
+
+    expect($response->json('data.paid_at'))->not->toBeNull();
+})->with(['ADMIN', 'STAFF']);
+
+test('confirming a paid order is idempotent', function () {
+    $orderId = insertAdminOrderForTest(['payment_status' => 'paid']);
+    DB::connection('bstore_order')->table('orders')->where('id', $orderId)->update([
+        'paid_at' => '2026-08-03 10:00:00',
+    ]);
+
+    $this->withToken(adminOrderTokenForTest())
+        ->patchJson("/api/admin/orders/{$orderId}/payment-status", ['payment_status' => 'paid'])
+        ->assertOk()
+        ->assertJsonPath('data.payment_status', 'paid')
+        ->assertJsonPath('data.paid_at', '2026-08-03T10:00:00.000000Z');
+});
+
+test('a cancelled order cannot be confirmed as paid', function () {
+    $orderId = insertAdminOrderForTest(['status' => 'cancelled', 'payment_status' => 'unpaid']);
+
+    $this->withToken(adminOrderTokenForTest())
+        ->patchJson("/api/admin/orders/{$orderId}/payment-status", ['payment_status' => 'paid'])
+        ->assertUnprocessable();
+});
+
+test('admin payment status endpoint returns not found and enforces authorization', function () {
+    $this->withToken(adminOrderTokenForTest())
+        ->patchJson('/api/admin/orders/999/payment-status', ['payment_status' => 'paid'])
+        ->assertNotFound();
+
+    $this->withHeader('Authorization', '')
+        ->patchJson('/api/admin/orders/1/payment-status', ['payment_status' => 'paid'])
+        ->assertUnauthorized();
+
+    $this->withToken(adminOrderTokenForTest('CUSTOMER'))
+        ->patchJson('/api/admin/orders/1/payment-status', ['payment_status' => 'paid'])
+        ->assertForbidden();
 });

@@ -19,7 +19,7 @@ class InternalService
         ) {
             return response()->json([
                 'success' => false,
-                'message' => 'Internal service authentication failed',
+                'message' => 'Xác thực dịch vụ nội bộ không thành công.',
                 'data' => null,
             ], 401);
         }

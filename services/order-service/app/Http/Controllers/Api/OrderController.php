@@ -87,7 +87,7 @@ class OrderController extends Controller
     public function updateAdminOrderStatus(Request $request, int|string $id): JsonResponse
     {
         $data = $request->validate([
-            'status' => ['required', 'string', 'max:30'],
+            'status' => ['required', 'string', Rule::in(Order::WORKFLOW_STATUSES)],
             'note' => ['nullable', 'string'],
             'processing_note' => ['nullable', 'string'],
         ]);
@@ -111,6 +111,34 @@ class OrderController extends Controller
             'success' => true,
             'message' => 'Cap nhat trang thai don hang thanh cong',
             'data' => $this->orderService->serializeAdminOrder($order),
+        ]);
+    }
+
+    public function updateAdminOrderPaymentStatus(Request $request, int|string $id): JsonResponse
+    {
+        $data = $request->validate([
+            'payment_status' => ['required', 'string', Rule::in(['paid'])],
+        ]);
+
+        $order = $this->orderService->updatePaymentStatus((int) $id, $data);
+
+        if (! $order) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Khong tim thay don hang',
+                'data' => null,
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cap nhat trang thai thanh toan don hang thanh cong',
+            'data' => [
+                'id' => $order->id,
+                'status' => $order->status,
+                'payment_status' => $order->payment_status,
+                'paid_at' => $order->getAttribute('paid_at'),
+            ],
         ]);
     }
 
@@ -297,6 +325,7 @@ class OrderController extends Controller
                 || filter_var($item['quantity'], FILTER_VALIDATE_INT) === false
             ) {
                 $consolidated[] = $item;
+
                 continue;
             }
 
@@ -308,6 +337,7 @@ class OrderController extends Controller
                 $item['product_variant_id'] = $variantId;
                 $item['quantity'] = $quantity;
                 $consolidated[] = $item;
+
                 continue;
             }
 
@@ -397,6 +427,62 @@ class OrderController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Tu choi huy don thanh cong',
+            'data' => $this->orderService->serializeAdminOrder($order),
+        ]);
+    }
+
+    public function requestReturn(Request $request, int|string $id): JsonResponse
+    {
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'max:2000'],
+        ]);
+        $order = $this->orderService->requestReturn(
+            $this->authenticatedUserId($request),
+            (int) $id,
+            $data['reason'],
+        );
+
+        if (! $order) {
+            return response()->json(['success' => false, 'message' => 'Khong tim thay don hang', 'data' => null], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Gui yeu cau tra hang thanh cong',
+            'data' => $this->orderService->serializeOrder($order),
+        ]);
+    }
+
+    public function updateReturnStatus(Request $request, int|string $id, string $status): JsonResponse
+    {
+        $status = strtolower($status);
+        $request->validate([
+            'note' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        if (! in_array($status, [
+            Order::RETURN_APPROVED,
+            Order::RETURN_RECEIVED,
+            Order::RETURN_COMPLETED,
+            Order::RETURN_REJECTED,
+        ], true)) {
+            abort(404);
+        }
+
+        $order = $this->orderService->updateReturnStatus(
+            (int) $id,
+            $status,
+            $this->authenticatedActor($request),
+            $request->input('note'),
+        );
+
+        if (! $order) {
+            return response()->json(['success' => false, 'message' => 'Khong tim thay don hang', 'data' => null], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cap nhat trang thai tra hang thanh cong',
             'data' => $this->orderService->serializeAdminOrder($order),
         ]);
     }

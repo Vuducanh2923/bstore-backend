@@ -8,11 +8,20 @@ use Illuminate\Support\Str;
 
 class Product extends Model
 {
+    private static array $timestampSupport = [];
+
     protected $connection = 'bstore_catalog';
 
     protected $table = 'products';
 
     public $timestamps = false;
+
+    protected $appends = [
+        'total_quantity',
+        'total_reserved',
+        'available_quantity',
+        'in_stock',
+    ];
 
     protected $fillable = [
         'category_id',
@@ -44,8 +53,12 @@ class Product extends Model
 
     public function usesTimestamps(): bool
     {
-        return Schema::connection($this->getConnectionName())->hasColumn($this->getTable(), static::CREATED_AT)
-            && Schema::connection($this->getConnectionName())->hasColumn($this->getTable(), static::UPDATED_AT);
+        $cacheKey = spl_object_id($this->getConnection()).':'.$this->getTable();
+
+        return self::$timestampSupport[$cacheKey] ??= (
+            Schema::connection($this->getConnectionName())->hasColumn($this->getTable(), static::CREATED_AT)
+            && Schema::connection($this->getConnectionName())->hasColumn($this->getTable(), static::UPDATED_AT)
+        );
     }
 
     protected static function booted(): void
@@ -105,6 +118,16 @@ class Product extends Model
         return $this->hasMany(ProductVariant::class);
     }
 
+    public function inventories()
+    {
+        return $this->hasManyThrough(
+            Inventory::class,
+            ProductVariant::class,
+            'product_id',
+            'product_variant_id',
+        );
+    }
+
     public function images()
     {
         return $this->hasMany(ProductImage::class);
@@ -113,5 +136,37 @@ class Product extends Model
     public function warrantyPolicy()
     {
         return $this->belongsTo(WarrantyPolicy::class);
+    }
+
+    public function getTotalQuantityAttribute(): int
+    {
+        if (array_key_exists('total_quantity', $this->attributes)) {
+            return (int) $this->attributes['total_quantity'];
+        }
+
+        return $this->relationLoaded('variants')
+            ? (int) $this->variants->sum(fn (ProductVariant $variant): int => $variant->quantity)
+            : 0;
+    }
+
+    public function getTotalReservedAttribute(): int
+    {
+        if (array_key_exists('total_reserved', $this->attributes)) {
+            return (int) $this->attributes['total_reserved'];
+        }
+
+        return $this->relationLoaded('variants')
+            ? (int) $this->variants->sum(fn (ProductVariant $variant): int => $variant->reserved_quantity)
+            : 0;
+    }
+
+    public function getAvailableQuantityAttribute(): int
+    {
+        return $this->total_quantity - $this->total_reserved;
+    }
+
+    public function getInStockAttribute(): bool
+    {
+        return $this->available_quantity > 0;
     }
 }

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\CartController;
 use App\Http\Controllers\Api\ComplaintController;
+use App\Http\Controllers\Api\DiscountController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\RefundController;
 use App\Http\Controllers\Api\WarrantyController;
@@ -11,9 +12,11 @@ use Illuminate\Support\Facades\Route;
 Route::get('/docs/openapi.json', [SwaggerController::class, 'json'])->name('swagger.openapi');
 
 Route::middleware('customer.token')->prefix('customer')->group(function () {
+    Route::post('/discount-codes/preview', [DiscountController::class, 'preview']);
     Route::get('/orders', [OrderController::class, 'customerOrders']);
     Route::get('/orders/{id}', [OrderController::class, 'customerOrderDetail'])->whereNumber('id');
     Route::post('/orders/{id}/cancel', [OrderController::class, 'requestCancel'])->whereNumber('id');
+    Route::post('/orders/{id}/return', [OrderController::class, 'requestReturn'])->whereNumber('id');
     Route::get('/warranty-requests', [WarrantyController::class, 'customerIndex']);
     Route::post('/warranty-requests', [WarrantyController::class, 'store']);
     Route::get('/warranty-requests/{id}', [WarrantyController::class, 'customerShow'])->whereNumber('id');
@@ -32,13 +35,22 @@ Route::middleware('customer.token')->group(function () {
 });
 
 Route::middleware('admin.token')->prefix('admin')->group(function () {
+    Route::get('/discount-codes', [DiscountController::class, 'index']);
+    Route::post('/discount-codes', [DiscountController::class, 'store']);
+    Route::get('/discount-codes/{id}', [DiscountController::class, 'show'])->whereNumber('id');
+    Route::delete('/discount-codes/{id}', [DiscountController::class, 'destroy'])->whereNumber('id');
+    Route::put('/discount-codes/{id}/deactivate', [DiscountController::class, 'deactivate'])->whereNumber('id');
     Route::get('/orders', [OrderController::class, 'adminOrders']);
     Route::get('/orders/{id}', [OrderController::class, 'adminOrderDetail'])->whereNumber('id');
     Route::put('/orders/{id}/assign', [OrderController::class, 'assignToStaff'])->whereNumber('id');
     Route::patch('/orders/{id}/assign', [OrderController::class, 'assignToStaff'])->whereNumber('id');
     Route::patch('/orders/{id}/status', [OrderController::class, 'updateAdminOrderStatus'])->whereNumber('id');
+    Route::patch('/orders/{id}/payment-status', [OrderController::class, 'updateAdminOrderPaymentStatus'])->whereNumber('id');
     Route::put('/orders/{id}/cancel/approve', [OrderController::class, 'approveCancel'])->whereNumber('id');
     Route::put('/orders/{id}/cancel/reject', [OrderController::class, 'rejectCancel'])->whereNumber('id');
+    Route::put('/orders/{id}/return/{status}', [OrderController::class, 'updateReturnStatus'])
+        ->whereNumber('id')
+        ->whereIn('status', ['approved', 'received', 'completed', 'rejected']);
     Route::get('/warranty-requests', [WarrantyController::class, 'adminIndex']);
     Route::get('/warranty-requests/{id}', [WarrantyController::class, 'adminShow'])->whereNumber('id');
     Route::put('/warranty-requests/{id}/approve', [WarrantyController::class, 'approve'])->whereNumber('id');

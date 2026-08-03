@@ -50,7 +50,15 @@ class AuthService
     {
         $user = User::with('role')->where('email', $this->emailVerifications->normalizeEmail($email))->first();
 
-        if (! $user || ! $this->passwordMatches($password, (string) $user->password)) {
+        if (! $user) {
+            return ['status' => 'invalid', 'user' => null];
+        }
+
+        if (! $this->usesStrongPasswordHash((string) $user->password)) {
+            return ['status' => 'password_reset_required', 'user' => null];
+        }
+
+        if (! $this->passwordMatches($password, (string) $user->password)) {
             return ['status' => 'invalid', 'user' => null];
         }
 
@@ -62,7 +70,7 @@ class AuthService
             return ['status' => 'email_unverified', 'user' => null];
         }
 
-        if (password_get_info((string) $user->password)['algoName'] !== 'bcrypt') {
+        if (Hash::needsRehash((string) $user->password)) {
             $user->forceFill([
                 'password' => Hash::make($password),
             ])->save();
@@ -244,16 +252,11 @@ class AuthService
             return false;
         }
 
-        try {
-            if (Hash::check($password, $storedPassword)) {
-                return true;
-            }
-        } catch (\RuntimeException) {
-            // Old seed data may contain plain text, md5, or sha1 passwords.
-        }
+        return password_verify($password, $storedPassword);
+    }
 
-        return hash_equals($storedPassword, $password)
-            || hash_equals(strtolower($storedPassword), md5($password))
-            || hash_equals(strtolower($storedPassword), sha1($password));
+    private function usesStrongPasswordHash(string $storedPassword): bool
+    {
+        return in_array(password_get_info($storedPassword)['algoName'] ?? 'unknown', ['bcrypt', 'argon2id'], true);
     }
 }

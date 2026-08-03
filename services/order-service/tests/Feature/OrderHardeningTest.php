@@ -47,6 +47,9 @@ beforeEach(function () {
         $table->decimal('shipping_fee', 15, 2)->default(0);
         $table->decimal('final_amount', 15, 2)->default(0);
         $table->string('status', 30)->default('pending');
+        $table->string('cancel_request_status', 20)->default('none');
+        $table->string('refund_status', 20)->default('none');
+        $table->string('return_status', 20)->default('none');
         $table->string('payment_status', 20)->default('unpaid');
         $table->timestamp('paid_at')->nullable();
         $table->string('inventory_reference')->nullable()->unique();
@@ -57,6 +60,7 @@ beforeEach(function () {
         $table->timestamp('assigned_at')->nullable();
         $table->text('processing_note')->nullable();
         $table->text('cancel_reason')->nullable();
+        $table->text('return_reason')->nullable();
         $table->text('note')->nullable();
         $table->timestamp('created_at')->nullable();
         $table->timestamp('updated_at')->nullable();
@@ -248,8 +252,6 @@ test('inventory is reserved committed and restored across cod lifecycle', functi
     $this->withToken(customerAccessToken(10))->postJson("/api/customer/orders/{$orderId}/cancel", [
         'reason' => 'Khong con nhu cau',
     ])->assertOk();
-    $this->withToken($admin)->putJson("/api/admin/orders/{$orderId}/cancel/approve")
-        ->assertOk();
     $this->assertDatabaseHas('orders', [
         'id' => $orderId,
         'status' => 'cancelled',
@@ -267,13 +269,9 @@ test('cancelling a pending order releases its reservation', function () {
         ->postJson('/api/orders', validOrderPayload())
         ->assertCreated()
         ->json('data.id');
-    $admin = app(AuthTokenService::class)->generate(1, 'ADMIN', 'admin@example.com');
-
     $this->withToken(customerAccessToken(10))->postJson("/api/customer/orders/{$orderId}/cancel", [
         'reason' => 'Dat nham',
     ])->assertOk();
-    $this->withToken($admin)->putJson("/api/admin/orders/{$orderId}/cancel/approve")
-        ->assertOk();
 
     $this->assertDatabaseHas('orders', [
         'id' => $orderId,

@@ -20,7 +20,7 @@ class AuthTokenService
         $user->loadMissing('role');
 
         if (! $user->isActive()) {
-            throw new RuntimeException('Cannot issue tokens for an inactive user.');
+            throw new RuntimeException('Không thể cấp token cho tài khoản đã bị vô hiệu hóa.');
         }
 
         $now = Carbon::now();
@@ -286,7 +286,7 @@ class AuthTokenService
         $configured = config('auth.token_key');
 
         if (! is_string($configured) || trim($configured) === '') {
-            throw new RuntimeException('AUTH_TOKEN_KEY is required.');
+            throw new RuntimeException('Bắt buộc phải cấu hình AUTH_TOKEN_KEY.');
         }
 
         $key = $configured;
@@ -295,14 +295,14 @@ class AuthTokenService
             $decoded = base64_decode(substr($configured, 7), true);
 
             if ($decoded === false) {
-                throw new RuntimeException('AUTH_TOKEN_KEY is not valid base64.');
+                throw new RuntimeException('AUTH_TOKEN_KEY không phải chuỗi base64 hợp lệ.');
             }
 
             $key = $decoded;
         }
 
         if (strlen($key) < 32) {
-            throw new RuntimeException('AUTH_TOKEN_KEY must contain at least 32 bytes.');
+            throw new RuntimeException('AUTH_TOKEN_KEY phải chứa ít nhất 32 byte.');
         }
 
         return $key;

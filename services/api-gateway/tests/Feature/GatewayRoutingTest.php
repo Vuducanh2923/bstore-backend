@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 
 beforeEach(function () {
@@ -31,13 +32,16 @@ test('admin customer routes are forwarded to auth service', function () {
 
 test('existing admin catalog routes still go to catalog service', function () {
     Http::fake([
+        'http://auth.test/api/internal/auth/introspect' => Http::response([
+            'data' => ['active' => true, 'role' => 'ADMIN'],
+        ]),
         'http://catalog.test/api/admin/brands' => Http::response([
             'success' => true,
             'data' => [],
         ]),
     ]);
 
-    $this->getJson('/api/admin/brands')->assertOk();
+    $this->withToken('admin-token')->getJson('/api/admin/brands')->assertOk();
 
     Http::assertSent(fn ($request) => $request->url() === 'http://catalog.test/api/admin/brands');
 });
@@ -55,7 +59,7 @@ test('admin order routes are forwarded to order service', function () {
         ]),
         'http://order.test/api/admin/orders/123/status' => Http::response([
             'success' => true,
-            'data' => ['order_id' => 123, 'status' => 'confirmed'],
+            'data' => ['order_id' => 123, 'status' => 'processing'],
         ]),
         'http://order.test/api/admin/orders/123/assign' => Http::response([
             'success' => true,
@@ -76,7 +80,7 @@ test('admin order routes are forwarded to order service', function () {
         ->assertOk();
 
     $this->withHeader('Authorization', 'Bearer admin-token')
-        ->patchJson('/api/admin/orders/123/status', ['status' => 'confirmed'])
+        ->patchJson('/api/admin/orders/123/status', ['status' => 'processing'])
         ->assertOk();
 
     $this->withHeader('Authorization', 'Bearer admin-token')
@@ -108,6 +112,33 @@ test('admin order routes are forwarded to order service', function () {
         && $request->hasHeader('authorization', 'Bearer admin-token'));
 });
 
+test('admin order payment status route is forwarded only to order service', function () {
+    Http::fake([
+        'http://auth.test/api/internal/auth/introspect' => Http::response([
+            'data' => ['active' => true, 'role' => 'ADMIN'],
+        ]),
+        'http://order.test/api/admin/orders/123/payment-status' => Http::response([
+            'success' => true,
+            'data' => ['id' => 123, 'payment_status' => 'paid'],
+        ]),
+        'http://catalog.test/*' => Http::response([
+            'success' => false,
+            'message' => 'Unexpected catalog request',
+        ], 404),
+    ]);
+
+    $this->withToken('admin-token')
+        ->patchJson('/api/admin/orders/123/payment-status', ['payment_status' => 'paid'])
+        ->assertOk()
+        ->assertJsonPath('data.payment_status', 'paid');
+
+    Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/admin/orders/123/payment-status'
+        && $request->method() === 'PATCH'
+        && $request->data() === ['payment_status' => 'paid']
+        && $request->hasHeader('authorization', 'Bearer admin-token'));
+    Http::assertNotSent(fn ($request) => str_starts_with($request->url(), 'http://catalog.test/'));
+});
+
 test('customer and admin warranty routes are forwarded to order service', function () {
     Http::fake([
         'http://auth.test/api/internal/auth/introspect' => Http::response(['data' => ['active' => true]]),
@@ -128,15 +159,38 @@ test('customer and admin warranty routes are forwarded to order service', functi
     Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/admin/warranty-requests/5/approve');
 });
 
+test('admin discount code routes are forwarded to order service', function () {
+    Http::fake([
+        'http://auth.test/api/internal/auth/introspect' => Http::response(['data' => ['active' => true]]),
+        'http://order.test/api/admin/discount-codes' => Http::response(['success' => true, 'data' => []]),
+        'http://order.test/api/admin/discount-codes/5/deactivate' => Http::response([
+            'success' => true, 'data' => ['id' => 5, 'status' => 'inactive'],
+        ]),
+    ]);
+
+    $this->withHeader('Authorization', 'Bearer admin-token')
+        ->getJson('/api/admin/discount-codes')
+        ->assertOk();
+    $this->withHeader('Authorization', 'Bearer admin-token')
+        ->putJson('/api/admin/discount-codes/5/deactivate')
+        ->assertOk();
+
+    Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/admin/discount-codes');
+    Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/admin/discount-codes/5/deactivate');
+});
+
 test('cart detail routes are forwarded to order service', function () {
     Http::fake([
+        'http://auth.test/api/internal/auth/introspect' => Http::response([
+            'data' => ['active' => true, 'role' => 'CUSTOMER'],
+        ]),
         'http://order.test/api/carts/10' => Http::response([
             'success' => true,
             'data' => ['id' => 10],
         ]),
     ]);
 
-    $this->getJson('/api/carts/10')->assertOk();
+    $this->withToken('customer-token')->getJson('/api/carts/10')->assertOk();
 
     Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/carts/10');
 });
@@ -167,7 +221,7 @@ test('customer order routes are forwarded to order service', function () {
         ]),
         'http://order.test/api/customer/orders/123/cancel' => Http::response([
             'success' => true,
-            'data' => ['status' => 'pending_cancel'],
+            'data' => ['status' => 'processing', 'cancel_request_status' => 'pending'],
         ]),
     ]);
 
@@ -185,6 +239,20 @@ test('customer order routes are forwarded to order service', function () {
     Http::assertSent(fn ($request) => $request->url() === 'http://order.test/api/customer/orders/123/cancel'
         && $request->method() === 'POST'
         && $request->hasHeader('authorization', 'Bearer customer-token'));
+});
+
+test('request id is preserved across gateway and downstream service', function () {
+    Http::fake([
+        'http://catalog.test/api/products' => Http::response(['success' => true, 'data' => []]),
+    ]);
+
+    $this->withHeader('X-Request-ID', 'trace-bstore-123')
+        ->getJson('/api/products')
+        ->assertOk()
+        ->assertHeader('X-Request-ID', 'trace-bstore-123');
+
+    Http::assertSent(fn ($request): bool => $request->url() === 'http://catalog.test/api/products'
+        && $request->hasHeader('X-Request-ID', 'trace-bstore-123'));
 });
 
 test('refund and complaint routes are forwarded to order service', function () {
@@ -279,6 +347,99 @@ test('revoked access tokens are rejected before forwarding', function () {
     Http::assertNotSent(fn ($request) => $request->url() === 'http://auth.test/api/profile');
 });
 
+test('expired access token returns the canonical 401 response', function () {
+    Http::fake([
+        'http://auth.test/api/internal/auth/introspect' => Http::response(['data' => ['active' => false]]),
+    ]);
+
+    $this->withToken('expired-token')->getJson('/api/profile')
+        ->assertStatus(401)
+        ->assertExactJson(['message' => 'Bạn chưa đăng nhập.', 'code' => 'TOKEN_INVALID']);
+});
+
+test('access token expiring at the current second is rejected by the gateway', function () {
+    Http::fake([
+        'http://auth.test/api/internal/auth/introspect' => Http::response(['data' => [
+            'active' => false,
+            'exp' => now()->timestamp,
+        ]]),
+    ]);
+
+    $this->withToken('boundary-expired-token')->getJson('/api/profile')
+        ->assertStatus(401)
+        ->assertExactJson(['message' => 'Bạn chưa đăng nhập.', 'code' => 'TOKEN_INVALID']);
+});
+
+test('invalid access token returns the canonical 401 response', function () {
+    Http::fake([
+        'http://auth.test/api/internal/auth/introspect' => Http::response(['data' => ['active' => false]]),
+    ]);
+
+    $this->withToken('invalid-token')->getJson('/api/profile')
+        ->assertStatus(401)
+        ->assertExactJson(['message' => 'Bạn chưa đăng nhập.', 'code' => 'TOKEN_INVALID']);
+});
+
+test('missing access token returns the canonical 401 response without contacting a service', function () {
+    Http::fake();
+
+    $this->getJson('/api/profile')
+        ->assertStatus(401)
+        ->assertExactJson(['message' => 'Bạn chưa đăng nhập.', 'code' => 'TOKEN_INVALID']);
+
+    Http::assertNothingSent();
+});
+
+test('auth service timeout returns 503 instead of 401', function () {
+    Http::fake(fn () => throw new ConnectionException('Auth request timed out'));
+
+    $this->withToken('valid-looking-token')->getJson('/api/profile')
+        ->assertStatus(503)
+        ->assertExactJson([
+            'message' => 'Dịch vụ xác thực hiện không khả dụng.',
+            'code' => 'AUTH_SERVICE_UNAVAILABLE',
+        ]);
+});
+
+test('downstream service timeout returns 503 instead of 401', function () {
+    Http::fake(function ($request) {
+        if ($request->url() === 'http://auth.test/api/internal/auth/introspect') {
+            return Http::response(['data' => ['active' => true, 'role' => 'ADMIN']]);
+        }
+
+        throw new ConnectionException('Catalog request timed out');
+    });
+
+    $this->withToken('admin-token')->postJson('/api/admin/brands', ['name' => 'Brand'])
+        ->assertStatus(503)
+        ->assertExactJson(['message' => 'Dịch vụ hiện không khả dụng.', 'code' => 'SERVICE_UNAVAILABLE']);
+});
+
+test('customer is forbidden from admin routes', function () {
+    Http::fake([
+        'http://auth.test/api/internal/auth/introspect' => Http::response([
+            'data' => ['active' => true, 'role' => 'CUSTOMER'],
+        ]),
+    ]);
+
+    $this->withToken('customer-token')->getJson('/api/admin/brands')
+        ->assertStatus(403)
+        ->assertExactJson(['message' => 'Bạn không có quyền thực hiện chức năng này.', 'code' => 'FORBIDDEN']);
+
+    Http::assertNotSent(fn ($request) => $request->url() === 'http://catalog.test/api/admin/brands');
+});
+
+test('admin can access admin routes', function () {
+    Http::fake([
+        'http://auth.test/api/internal/auth/introspect' => Http::response([
+            'data' => ['active' => true, 'role' => 'ADMIN'],
+        ]),
+        'http://catalog.test/api/admin/brands' => Http::response(['success' => true, 'data' => []]),
+    ]);
+
+    $this->withToken('admin-token')->getJson('/api/admin/brands')->assertOk();
+});
+
 test('public catalog routes ignore an invalid authorization header', function (string $path) {
     Http::fake([
         'http://catalog.test/api/*' => Http::response(['success' => true, 'data' => []]),
@@ -350,7 +511,7 @@ test('VNPAY IPN route is forwarded to payment service with full query string', f
     Http::fake([
         'http://payment.test/api/payments/vnpay/ipn*' => Http::response([
             'RspCode' => '00',
-            'Message' => 'Confirm Success',
+            'Message' => 'Xác nhận thành công.',
         ]),
     ]);
 

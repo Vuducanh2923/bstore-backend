@@ -29,6 +29,10 @@ class ProductResource extends JsonResource
             'sale_price' => $salePrice,
             'is_sale' => $isSale,
             'status' => $this->status,
+            'total_quantity' => $this->total_quantity,
+            'total_reserved' => $this->total_reserved,
+            'available_quantity' => $this->available_quantity,
+            'in_stock' => $this->in_stock,
             'category' => $this->whenLoaded('category'),
             'brand' => $this->whenLoaded('brand', fn () => [
                 'id' => $this->brand?->id,

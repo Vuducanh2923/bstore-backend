@@ -23,34 +23,55 @@ class Order extends Model
 
     public const STATUS_DELIVERED = 'delivered';
 
-    public const STATUS_PENDING_CANCEL = 'pending_cancel';
-
     public const STATUS_CANCELLED = 'cancelled';
 
     public const STATUS_COMPLETED = 'completed';
-
-    public const STATUS_REFUNDED = 'refunded';
 
     public const WORKFLOW_STATUSES = [
         self::STATUS_PENDING,
         self::STATUS_PROCESSING,
         self::STATUS_SHIPPING,
         self::STATUS_DELIVERED,
+        self::STATUS_COMPLETED,
     ];
 
+    public const CANCEL_REQUEST_NONE = 'none';
+
+    public const CANCEL_REQUEST_PENDING = 'pending';
+
+    public const CANCEL_REQUEST_APPROVED = 'approved';
+
+    public const CANCEL_REQUEST_REJECTED = 'rejected';
+
+    public const REFUND_NONE = 'none';
+
+    public const REFUND_PENDING = 'pending';
+
+    public const REFUND_PROCESSING = 'processing';
+
+    public const REFUND_COMPLETED = 'completed';
+
+    public const REFUND_FAILED = 'failed';
+
+    public const RETURN_NONE = 'none';
+
+    public const RETURN_PENDING = 'pending';
+
+    public const RETURN_APPROVED = 'approved';
+
+    public const RETURN_RECEIVED = 'received';
+
+    public const RETURN_COMPLETED = 'completed';
+
+    public const RETURN_REJECTED = 'rejected';
+
     public const STATUS_LABELS = [
-        'pending' => 'Đang chờ xử lý',
+        'pending' => 'Chờ xác nhận',
         'processing' => 'Đang xử lý',
-        'confirmed' => 'Đã xác nhận',
-        'packing' => 'Đang đóng gói',
-        'shipping' => 'Đang giao hàng',
+        'shipping' => 'Đang vận chuyển',
         'delivered' => 'Đã giao hàng',
-        'failed' => 'Giao hàng thất bại',
-        'pending_cancel' => 'Chờ duyệt hủy',
         'cancelled' => 'Đã hủy',
         'completed' => 'Hoàn tất',
-        'refunded' => 'Đã hoàn tiền',
-        'returned' => 'Đã trả hàng',
     ];
 
     public const PAYMENT_STATUS_LABELS = [
@@ -82,6 +103,9 @@ class Order extends Model
         'shipping_fee',
         'final_amount',
         'status',
+        'cancel_request_status',
+        'refund_status',
+        'return_status',
         'payment_status',
         'paid_at',
         'delivered_at',
@@ -90,6 +114,7 @@ class Order extends Model
         'assigned_at',
         'processing_note',
         'cancel_reason',
+        'return_reason',
         'note',
         'created_at',
         'updated_at',

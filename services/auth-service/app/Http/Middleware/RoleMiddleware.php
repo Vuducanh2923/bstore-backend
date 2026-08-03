@@ -21,9 +21,8 @@ abstract class RoleMiddleware
 
         if (! $user instanceof User) {
             return response()->json([
-                'success' => false,
-                'message' => 'Chua dang nhap',
-                'data' => null,
+                'message' => 'Bạn chưa đăng nhập.',
+                'code' => 'TOKEN_INVALID',
             ], 401);
         }
 
@@ -40,9 +39,8 @@ abstract class RoleMiddleware
 
         if (! in_array(strtoupper((string) $user->role?->name), $roles, true)) {
             return response()->json([
-                'success' => false,
-                'message' => 'Khong co quyen truy cap',
-                'data' => null,
+                'message' => 'Bạn không có quyền thực hiện chức năng này.',
+                'code' => 'FORBIDDEN',
             ], 403);
         }
 

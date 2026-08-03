@@ -1,6 +1,7 @@
 <?php
 
 return [
+    'performance' => ['slow_external_call_ms' => env('SLOW_EXTERNAL_CALL_MS', 1000)],
 
     'internal_service_token' => env('INTERNAL_SERVICE_TOKEN'),
 
