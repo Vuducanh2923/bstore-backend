@@ -81,15 +81,27 @@ class CatalogPricingService
         }
 
         $images = $this->imagesByVariant($catalogRows);
+        $availableQuantities = $this->availableQuantitiesByVariant($variantIds);
 
-        return collect($items)->map(function (array $requested) use ($catalogRows, $images): array {
+        return collect($items)->map(function (array $requested) use ($catalogRows, $images, $availableQuantities): array {
             $variantId = (int) $requested['product_variant_id'];
             $row = $catalogRows->get($variantId);
+            $requestedQuantity = (int) $requested['quantity'];
 
             if (! $this->isActive($row->variant_status ?? null) || ! $this->isActive($row->product_status ?? null)) {
                 throw ValidationException::withMessages([
                     'items' => ["Bien the san pham {$variantId} khong con kinh doanh"],
                 ]);
+            }
+
+            if ($availableQuantities->has($variantId)) {
+                $availableQuantity = (int) $availableQuantities->get($variantId);
+
+                if ($requestedQuantity > $availableQuantity) {
+                    throw ValidationException::withMessages([
+                        'quantity' => ["So luong vuot qua ton kho. Chi con {$availableQuantity} san pham"],
+                    ]);
+                }
             }
 
             return [
@@ -101,9 +113,38 @@ class CatalogPricingService
                 'ram' => $row->variant_ram ?? null,
                 'storage' => $row->variant_storage ?? null,
                 'price' => $this->effectivePrice($row),
-                'quantity' => (int) $requested['quantity'],
+                'quantity' => $requestedQuantity,
             ];
         })->all();
+    }
+
+    private function availableQuantitiesByVariant(Collection $variantIds): Collection
+    {
+        try {
+            $schema = Schema::connection('bstore_catalog');
+
+            if (! $schema->hasTable('inventories')) {
+                return collect();
+            }
+
+            return DB::connection('bstore_catalog')
+                ->table('inventories')
+                ->whereIn('product_variant_id', $variantIds->all())
+                ->select(['product_variant_id', 'quantity', 'reserved_quantity'])
+                ->get()
+                ->mapWithKeys(fn (object $inventory): array => [
+                    (int) $inventory->product_variant_id => max(
+                        0,
+                        (int) $inventory->quantity - (int) ($inventory->reserved_quantity ?? 0),
+                    ),
+                ]);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            throw ValidationException::withMessages([
+                'quantity' => ['Khong the xac minh so luong ton kho'],
+            ]);
+        }
     }
 
     private function requiredCatalogColumns(): array

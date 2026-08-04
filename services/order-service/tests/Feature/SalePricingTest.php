@@ -30,7 +30,7 @@ beforeEach(function () {
         Schema::connection('bstore_order')->dropIfExists($table);
     }
 
-    foreach (['product_variants', 'products'] as $table) {
+    foreach (['inventories', 'product_variants', 'products'] as $table) {
         Schema::connection('bstore_catalog')->dropIfExists($table);
     }
 
@@ -130,6 +130,13 @@ beforeEach(function () {
         $table->string('status')->default('active');
     });
 
+    Schema::connection('bstore_catalog')->create('inventories', function (Blueprint $table) {
+        $table->id();
+        $table->unsignedBigInteger('product_variant_id')->unique();
+        $table->unsignedInteger('quantity')->default(0);
+        $table->unsignedInteger('reserved_quantity')->default(0);
+    });
+
     Http::fake(function ($request) {
         return Http::response([
             'success' => true,
@@ -198,6 +205,26 @@ test('zero sale price is ignored when calculating cart item price', function () 
         ->assertCreated()
         ->assertJsonPath('data.items.0.price', '8989998.00')
         ->assertJsonPath('data.items.0.subtotal', '8989998.00');
+});
+
+test('cart quantity cannot exceed available inventory', function () {
+    seedCatalogProduct(5, 50, 1000000, null, false);
+    DB::connection('bstore_catalog')->table('inventories')->insert([
+        'product_variant_id' => 50,
+        'quantity' => 5,
+        'reserved_quantity' => 2,
+    ]);
+
+    $this->withToken(customerAccessToken(1))->postJson('/api/carts', [
+        'items' => [[
+            'product_variant_id' => 50,
+            'quantity' => 4,
+        ]],
+    ])
+        ->assertUnprocessable()
+        ->assertJsonPath('data.quantity.0', 'So luong vuot qua ton kho. Chi con 3 san pham');
+
+    expect(DB::connection('bstore_order')->table('carts')->count())->toBe(0);
 });
 
 test('orders use sale price and recalculate totals from catalog pricing', function () {

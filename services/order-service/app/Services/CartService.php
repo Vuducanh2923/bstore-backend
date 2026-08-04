@@ -7,7 +7,9 @@ use App\Models\CartItem;
 use App\Models\Order;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class CartService
 {
@@ -34,22 +36,64 @@ class CartService
 
     public function find(int $id): ?Cart
     {
-        return Cart::with('items')->find($id);
+        return $this->attachAvailableQuantities(Cart::with('items')->find($id));
     }
 
     public function forUser(int $userId)
     {
-        return Cart::with('items')
+        $carts = Cart::with('items')
             ->where('user_id', $userId)
             ->orderByDesc('id')
             ->get();
+
+        $carts->each(fn (Cart $cart) => $this->attachAvailableQuantities($cart));
+
+        return $carts;
     }
 
     public function findForUser(int $userId, int $id): ?Cart
     {
-        return Cart::with('items')
+        return $this->attachAvailableQuantities(Cart::with('items')
             ->where('user_id', $userId)
-            ->find($id);
+            ->find($id));
+    }
+
+    private function attachAvailableQuantities(?Cart $cart): ?Cart
+    {
+        if (! $cart || ! $cart->relationLoaded('items') || $cart->items->isEmpty()) {
+            return $cart;
+        }
+
+        try {
+            if (! Schema::connection('bstore_catalog')->hasTable('inventories')) {
+                return $cart;
+            }
+
+            $available = DB::connection('bstore_catalog')
+                ->table('inventories')
+                ->whereIn('product_variant_id', $cart->items->pluck('product_variant_id')->all())
+                ->get(['product_variant_id', 'quantity', 'reserved_quantity'])
+                ->mapWithKeys(fn (object $row): array => [
+                    (int) $row->product_variant_id => max(
+                        0,
+                        (int) $row->quantity - (int) ($row->reserved_quantity ?? 0),
+                    ),
+                ]);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return $cart;
+        }
+
+        $cart->items->each(function (CartItem $item) use ($available): void {
+            $variantId = (int) $item->product_variant_id;
+
+            if ($available->has($variantId)) {
+                $item->setAttribute('available_quantity', (int) $available->get($variantId));
+            }
+        });
+
+        return $cart;
     }
 
     public function addItem(int $userId, array $data): CartItem

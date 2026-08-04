@@ -1,6 +1,12 @@
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
+$php = 'C:\Users\Admin\AppData\Local\Microsoft\WinGet\Packages\PHP.PHP.8.3_Microsoft.Winget.Source_8wekyb3d8bbwe\php.exe'
+$phpConfig = 'C:\Users\Admin\Desktop\VuDucANh\tools\php83'
+
+if (-not (Test-Path -LiteralPath $php)) {
+    throw "PHP 8.3 was not found at $php"
+}
 
 $services = @(
     @{ Name = 'api-gateway'; Path = 'services\api-gateway'; Port = 8000 },
@@ -25,7 +31,8 @@ foreach ($service in $services) {
     $command = @"
 Set-Location -LiteralPath '$servicePath'
 `$Host.UI.RawUI.WindowTitle = '$title'
-php artisan serve --host=127.0.0.1 --port=$($service.Port)
+`$env:PHPRC = '$phpConfig'
+& '$php' -S 127.0.0.1:$($service.Port) -t public public/index.php
 "@
     $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
 

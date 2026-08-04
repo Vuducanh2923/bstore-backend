@@ -3,7 +3,7 @@
 return [
     'connect_timeout' => (int) env('MICROSERVICE_CONNECT_TIMEOUT', 2),
 
-    'timeout' => (int) env('MICROSERVICE_TIMEOUT', 5),
+    'timeout' => (int) env('MICROSERVICE_TIMEOUT', 15),
 
     'internal_token' => env('INTERNAL_SERVICE_TOKEN'),
 

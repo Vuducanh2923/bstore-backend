@@ -23,7 +23,7 @@ class CategoryController extends Controller
             600,
             function () use ($request): array {
                 $categories = Category::query()
-                    ->select(['id', 'name', 'slug', 'status'])
+                    ->select(['id', 'name', 'slug', 'icon', 'status'])
                     ->where('status', 'active')
                     ->orderBy('name')
                     ->paginate($this->perPage($request), ['*'], 'page', $this->page($request));
