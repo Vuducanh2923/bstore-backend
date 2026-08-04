@@ -154,6 +154,12 @@ test('customer submits a valid warranty request', function () {
     expect(WarrantyRequest::first()->request_code)->toMatch('/^WR-\d{8}-\d{6}$/');
 });
 
+test('customer submits a warranty request for a completed order', function () {
+    createWarrantyThroughApi($this, 10, ['status' => 'completed'])
+        ->assertCreated()
+        ->assertJsonPath('data.status', 'pending');
+});
+
 test('customer cannot submit warranty for another customer order', function () {
     [$orderId, $itemId] = warrantyOrder(['user_id' => 11]);
     $this->withToken(warrantyToken(10))->postJson('/api/customer/warranty-requests', [

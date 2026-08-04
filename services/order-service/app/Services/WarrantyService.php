@@ -31,7 +31,10 @@ class WarrantyService
             if ((int) $order->user_id !== $customerId) {
                 throw new AuthorizationException('Don hang khong thuoc khach hang');
             }
-            if (strtolower((string) $order->status) !== Order::STATUS_DELIVERED) {
+            if (! in_array(strtolower((string) $order->status), [
+                Order::STATUS_DELIVERED,
+                Order::STATUS_COMPLETED,
+            ], true)) {
                 throw ValidationException::withMessages(['order_id' => ['Don hang chua duoc giao thanh cong']]);
             }
 
