@@ -186,19 +186,6 @@ class CartService
         }
     }
 
-    private function attachAvailableQuantities(?Cart $cart): ?Cart
-    {
-        if (! $cart) {
-            return null;
-        }
-
-        $availability = $this->availabilityForVariants(
-            $cart->items->pluck('product_variant_id')->all(),
-        );
-
-        return $this->applyAvailability($cart, $availability);
-    }
-
     private function applyAvailability(Cart $cart, $availability): Cart
     {
         foreach ($cart->items as $item) {
