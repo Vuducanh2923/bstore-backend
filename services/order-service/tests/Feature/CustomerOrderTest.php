@@ -50,6 +50,7 @@ beforeEach(function () {
     });
 });
 
+// Thực hiện insert khách hàng đơn hàng cho test.
 function insertCustomerOrderForTest(array $overrides = []): int
 {
     $id = DB::connection('bstore_order')->table('orders')->insertGetId([

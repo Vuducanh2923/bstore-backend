@@ -7,6 +7,8 @@ use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 
 abstract class TestCase extends BaseTestCase
 {
+
+    // Chuẩn bị dữ liệu và môi trường trước mỗi bài kiểm thử.
     protected function setUp(): void
     {
         parent::setUp();
@@ -23,6 +25,7 @@ abstract class TestCase extends BaseTestCase
         ));
     }
 
+    // Thực hiện token cho vai trò.
     public function tokenForRole(string $role): string
     {
         return app(AuthTokenService::class)->generate(
@@ -32,6 +35,7 @@ abstract class TestCase extends BaseTestCase
         );
     }
 
+    // Thực hiện không dùng danh mục sản phẩm token.
     public function withoutCatalogToken(): static
     {
         $this->defaultHeaders = [];

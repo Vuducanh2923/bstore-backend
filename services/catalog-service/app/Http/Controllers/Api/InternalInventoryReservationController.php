@@ -10,8 +10,11 @@ use Illuminate\Http\Request;
 
 class InternalInventoryReservationController extends Controller
 {
+
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(private readonly InventoryService $inventoryService) {}
 
+    // Tạo hoặc lưu dữ liệu theo nghiệp vụ của hàm.
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -33,21 +36,25 @@ class InternalInventoryReservationController extends Controller
         ], $result['created'] ? 201 : 200);
     }
 
+    // Thực hiện commit.
     public function commit(string $reference): JsonResponse
     {
         return $this->runAction(fn (): array => $this->inventoryService->commit($reference));
     }
 
+    // Thực hiện release.
     public function release(string $reference): JsonResponse
     {
         return $this->runAction(fn (): array => $this->inventoryService->release($reference));
     }
 
+    // Thực hiện restore.
     public function restore(string $reference): JsonResponse
     {
         return $this->runAction(fn (): array => $this->inventoryService->restore($reference));
     }
 
+    // Thực hiện run action.
     private function runAction(callable $action): JsonResponse
     {
         try {
@@ -62,6 +69,7 @@ class InternalInventoryReservationController extends Controller
         ]);
     }
 
+    // Thực hiện lỗi.
     private function error(InventoryReservationException $exception): JsonResponse
     {
         return response()->json([

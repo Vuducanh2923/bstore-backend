@@ -14,11 +14,14 @@ use Illuminate\Validation\Rule;
 
 class DiscountController extends Controller
 {
+
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(
         private readonly DiscountManagementService $discounts,
         private readonly OrderDiscountService $orderDiscounts,
     ) {}
 
+    // Thực hiện preview.
     public function preview(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -33,7 +36,7 @@ class DiscountController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Ap dung ma giam gia thanh cong',
+            'message' => 'Áp dụng mã giảm giá thành công',
             'data' => [
                 'discount_code' => $discounts[0]['discount_code'] ?? strtoupper($data['discount_code']),
                 'subtotal' => $subtotal,
@@ -43,6 +46,7 @@ class DiscountController extends Controller
         ]);
     }
 
+    // Lấy toàn bộ dữ liệu.
     public function index(Request $request): JsonResponse
     {
         $filters = $request->validate([
@@ -60,7 +64,7 @@ class DiscountController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Lay danh sach ma giam gia thanh cong',
+            'message' => 'Lấy danh sách mã giảm giá thành công',
             'data' => collect($page->items())
                 ->map(fn (Discount $discount): array => $this->resource($this->discounts->hydrate($discount)))
                 ->all(),
@@ -73,17 +77,19 @@ class DiscountController extends Controller
         ]);
     }
 
+    // Tạo hoặc lưu dữ liệu theo nghiệp vụ của hàm.
     public function store(StoreDiscountRequest $request): JsonResponse
     {
         $discount = $this->discounts->create($request->validated(), $this->actorId($request));
 
         return response()->json([
             'success' => true,
-            'message' => 'Them ma giam gia thanh cong',
+            'message' => 'Thêm mã giảm giá thành công',
             'data' => $this->resource($discount),
         ], 201);
     }
 
+    // Lấy toàn bộ dữ liệu.
     public function show(int|string $id): JsonResponse
     {
         $discount = $this->discounts->find((int) $id);
@@ -94,11 +100,12 @@ class DiscountController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Lay chi tiet ma giam gia thanh cong',
+            'message' => 'Lấy chi tiết mã giảm giá thành công',
             'data' => $this->resource($discount),
         ]);
     }
 
+    // Xóa hoặc hủy dữ liệu theo nghiệp vụ của hàm.
     public function destroy(int|string $id): JsonResponse
     {
         $result = $this->discounts->deleteOrDeactivate((int) $id);
@@ -110,12 +117,13 @@ class DiscountController extends Controller
         return response()->json([
             'success' => true,
             'message' => $result['action'] === 'deleted'
-                ? 'Xoa ma giam gia thanh cong'
-                : 'Ma giam gia da duoc ngung ap dung',
+                ? 'Xóa mã giảm giá thành công'
+                : 'Mã giảm giá đã được ngừng áp dụng',
             'data' => $this->resource($result['discount']),
         ]);
     }
 
+    // Thực hiện deactivate.
     public function deactivate(int|string $id): JsonResponse
     {
         $discount = $this->discounts->deactivate((int) $id);
@@ -126,26 +134,29 @@ class DiscountController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Ma giam gia da duoc ngung ap dung',
+            'message' => 'Mã giảm giá đã được ngừng áp dụng',
             'data' => $this->resource($discount),
         ]);
     }
 
+    // Thực hiện người thực hiện id.
     private function actorId(Request $request): int
     {
         return (int) data_get($request->attributes->get('auth_user', []), 'id', 0);
     }
 
+    // Thực hiện tài nguyên.
     private function resource(Discount $discount): array
     {
         return (new DiscountResource($discount))->resolve();
     }
 
+    // Thực hiện not found.
     private function notFound(): JsonResponse
     {
         return response()->json([
             'success' => false,
-            'message' => 'Khong tim thay ma giam gia',
+            'message' => 'Không tìm thấy mã giảm giá',
             'errors' => (object) [],
         ], 404);
     }

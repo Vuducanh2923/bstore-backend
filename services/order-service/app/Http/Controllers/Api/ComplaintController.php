@@ -9,8 +9,11 @@ use Illuminate\Http\Request;
 
 class ComplaintController extends Controller
 {
+
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(private readonly ComplaintService $complaints) {}
 
+    // Lấy toàn bộ dữ liệu.
     public function index(Request $request): JsonResponse
     {
         $complaints = $this->complaints->paginated(
@@ -20,7 +23,7 @@ class ComplaintController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Lay danh sach khieu nai thanh cong',
+            'message' => 'Lấy danh sách khiếu nại thành công',
             'data' => $this->complaints->serializeMany($complaints->items()),
             'pagination' => [
                 'page' => $complaints->currentPage(),
@@ -31,6 +34,7 @@ class ComplaintController extends Controller
         ]);
     }
 
+    // Lấy toàn bộ dữ liệu.
     public function show(Request $request, int|string $id): JsonResponse
     {
         $complaint = $this->complaints->find((int) $id, $this->authenticatedActor($request));
@@ -38,18 +42,19 @@ class ComplaintController extends Controller
         if (! $complaint) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay khieu nai',
+                'message' => 'Không tìm thấy khiếu nại',
                 'data' => null,
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Lay chi tiet khieu nai thanh cong',
+            'message' => 'Lấy chi tiết khiếu nại thành công',
             'data' => $this->complaints->serialize($complaint),
         ]);
     }
 
+    // Tạo hoặc lưu dữ liệu theo nghiệp vụ của hàm.
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -62,11 +67,12 @@ class ComplaintController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Gui khieu nai thanh cong',
+            'message' => 'Gửi khiếu nại thành công',
             'data' => $this->complaints->serialize($complaint),
         ], 201);
     }
 
+    // Xử lý dữ liệu theo nghiệp vụ của hàm.
     public function process(Request $request, int|string $id): JsonResponse
     {
         $data = $request->validate([
@@ -76,10 +82,11 @@ class ComplaintController extends Controller
 
         return $this->transitionResponse(
             $this->complaints->process((int) $id, $this->authenticatedActor($request), $data['reply'] ?? $data['note'] ?? null),
-            'Nhan xu ly khieu nai thanh cong',
+            'Nhận xử lý khiếu nại thành công',
         );
     }
 
+    // Xây dựng hoặc chuyển đổi dữ liệu theo nghiệp vụ của hàm.
     public function resolve(Request $request, int|string $id): JsonResponse
     {
         $data = $request->validate([
@@ -89,10 +96,11 @@ class ComplaintController extends Controller
 
         return $this->transitionResponse(
             $this->complaints->resolve((int) $id, $this->authenticatedActor($request), $data['reply'] ?? $data['note'] ?? null),
-            'Giai quyet khieu nai thanh cong',
+            'Giải quyết khiếu nại thành công',
         );
     }
 
+    // Cập nhật dữ liệu theo nghiệp vụ của hàm.
     public function reject(Request $request, int|string $id): JsonResponse
     {
         $data = $request->validate([
@@ -102,16 +110,17 @@ class ComplaintController extends Controller
 
         return $this->transitionResponse(
             $this->complaints->reject((int) $id, $this->authenticatedActor($request), $data['reply'] ?? $data['note'] ?? null),
-            'Tu choi khieu nai thanh cong',
+            'Từ chối khiếu nại thành công',
         );
     }
 
+    // Thực hiện chuyển trạng thái phản hồi.
     private function transitionResponse($complaint, string $message): JsonResponse
     {
         if (! $complaint) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay khieu nai',
+                'message' => 'Không tìm thấy khiếu nại',
                 'data' => null,
             ], 404);
         }
@@ -123,6 +132,7 @@ class ComplaintController extends Controller
         ]);
     }
 
+    // Thực hiện authenticated người thực hiện.
     private function authenticatedActor(Request $request): array
     {
         return (array) $request->attributes->get('auth_user', []);

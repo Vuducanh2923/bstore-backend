@@ -17,6 +17,7 @@ class PaymentService
 
     private const MAX_PER_PAGE = 100;
 
+    // Lấy toàn bộ dữ liệu.
     public function all(array $filters = []): LengthAwarePaginator
     {
         $perPage = min(self::MAX_PER_PAGE, max(1, (int) ($filters['limit'] ?? $filters['per_page'] ?? self::DEFAULT_PER_PAGE)));
@@ -28,13 +29,14 @@ class PaymentService
             ->paginate($perPage, ['*'], 'page', $page);
     }
 
+    // Tạo hoặc lưu được xác thực cod.
     public function createAuthoritativeCod(int $orderId, float|int|string $amount): Payment
     {
         return DB::connection('bstore_payment')->transaction(function () use ($orderId, $amount) {
             $payment = Payment::query()->where('order_id', $orderId)->lockForUpdate()->first();
 
             if ($payment && in_array($payment->status, ['paid', 'refunded', 'partially_refunded'], true)) {
-                throw new RuntimeException('Don hang da duoc thanh toan');
+                throw new RuntimeException('Đơn hàng đã được thanh toán');
             }
 
             $values = [
@@ -61,13 +63,14 @@ class PaymentService
         });
     }
 
+    // Tạo hoặc lưu or reuse đang chờ vnpay thanh toán.
     public function createOrReusePendingVnpayPayment(int $orderId, float|int|string $amount, string $orderInfo, string $createDate): Payment
     {
         return DB::connection('bstore_payment')->transaction(function () use ($orderId, $amount, $orderInfo, $createDate) {
             $payment = Payment::query()->where('order_id', $orderId)->lockForUpdate()->first();
 
             if ($payment && in_array($payment->status, ['paid', 'refunded', 'partially_refunded'], true)) {
-                throw new RuntimeException('Don hang da duoc thanh toan');
+                throw new RuntimeException('Đơn hàng đã được thanh toán');
             }
 
             $values = [
@@ -100,31 +103,37 @@ class PaymentService
         });
     }
 
+    // Thực hiện thanh toán cho vnpay txn ref.
     public function paymentForVnpayTxnRef(string $txnRef): ?Payment
     {
         return Payment::query()->where('transaction_code', $txnRef)->first();
     }
 
+    // Thực hiện ghi nhận vnpay đồng bộ đang chờ.
     public function recordVnpaySyncPending(Payment $payment, array $payload): Payment
     {
         return $this->recordNotification($payment, $payload, 'sync_pending', false);
     }
 
+    // Thực hiện ghi nhận vnpay paid.
     public function recordVnpayPaid(Payment $payment, array $payload): Payment
     {
         return $this->recordNotification($payment, $payload, 'paid', true);
     }
 
+    // Thực hiện ghi nhận vnpay thất bại.
     public function recordVnpayFailed(Payment $payment, array $payload): Payment
     {
         return $this->recordNotification($payment, $payload, 'failed', true);
     }
 
+    // Thực hiện thanh toán cho đơn hàng.
     public function paymentForOrder(int $orderId): ?Payment
     {
         return Payment::query()->where('order_id', $orderId)->first();
     }
 
+    // Thực hiện synchronize đơn hàng trạng thái.
     public function synchronizeOrderStatus(int $orderId, string $method, float|int|string $amount, string $status): Payment
     {
         return DB::connection('bstore_payment')->transaction(function () use ($orderId, $method, $amount, $status) {
@@ -135,26 +144,26 @@ class PaymentService
 
             if (! $isCod) {
                 if (! $payment) {
-                    throw new RuntimeException('Khong the cap nhat thanh toan online khi chua co giao dich.');
+                    throw new RuntimeException('Không thể cập nhật thanh toán trực tuyến khi chưa có giao dịch.');
                 }
 
                 if ($status === 'paid' && ! in_array($payment->status, ['paid', 'partially_refunded'], true)) {
-                    throw new RuntimeException('Khong the xac nhan thu cong thanh toan VNPay khi chua co giao dich thanh cong.');
+                    throw new RuntimeException('Không thể xác nhận thủ công thanh toán VNPay khi chưa có giao dịch thành công.');
                 }
 
                 if ($status !== 'paid' && strtolower((string) $payment->status) !== $status) {
-                    throw new RuntimeException('Trang thai thanh toan online phai theo ket qua giao dich tu Payment Service.');
+                    throw new RuntimeException('Trạng thái thanh toán trực tuyến phải theo kết quả giao dịch từ Dịch vụ thanh toán.');
                 }
 
                 return $payment;
             }
 
             if (! in_array($status, ['unpaid', 'paid'], true)) {
-                throw new RuntimeException('Don hang COD chi cho phep trang thai unpaid hoac paid.');
+                throw new RuntimeException('Đơn hàng COD chỉ cho phép trạng thái chưa thanh toán hoặc đã thanh toán.');
             }
 
             if ($payment && strtolower((string) $payment->status) === 'paid' && $status !== 'paid') {
-                throw new RuntimeException('Don hang da thanh toan khong the chuyen ve chua thanh toan.');
+                throw new RuntimeException('Đơn hàng đã thanh toán không thể chuyển về chưa thanh toán.');
             }
 
             if (! $payment) {
@@ -180,6 +189,7 @@ class PaymentService
         });
     }
 
+    // Thực hiện paid vnpay thanh toán cho đơn hàng.
     public function paidVnpayPaymentForOrder(int $orderId): ?Payment
     {
         return Payment::query()
@@ -190,11 +200,13 @@ class PaymentService
             ->first();
     }
 
+    // Thực hiện hóa đơn cho đơn hàng.
     public function invoiceForOrder(int $orderId): ?Invoice
     {
         return Invoice::query()->where('order_id', $orderId)->first();
     }
 
+    // Thực hiện refunded số tiền.
     public function refundedAmount(Payment $payment): float
     {
         return (float) PaymentRefund::query()
@@ -203,6 +215,7 @@ class PaymentService
             ->sum('amount');
     }
 
+    // Thực hiện ghi nhận thông báo.
     private function recordNotification(Payment $payment, array $payload, string $status, bool $updatePayment): Payment
     {
         return DB::connection('bstore_payment')->transaction(function () use ($payment, $payload, $status, $updatePayment) {

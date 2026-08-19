@@ -35,11 +35,13 @@ class OrderItem extends Model
         'subtotal' => 'decimal:2',
     ];
 
+    // Thực hiện đơn hàng.
     public function order()
     {
         return $this->belongsTo(Order::class);
     }
 
+    // Thực hiện bảo hành yêu cầu.
     public function warrantyRequests()
     {
         return $this->hasMany(WarrantyRequest::class);

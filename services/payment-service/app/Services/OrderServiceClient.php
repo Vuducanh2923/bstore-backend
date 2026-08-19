@@ -10,6 +10,8 @@ use RuntimeException;
 
 class OrderServiceClient
 {
+
+    // Thực hiện thanh toán context.
     public function paymentContext(int $orderId, int $customerId): array
     {
         try {
@@ -17,16 +19,17 @@ class OrderServiceClient
                 'customer_id' => $customerId,
             ]);
         } catch (ConnectionException $exception) {
-            throw new RuntimeException('Khong ket noi duoc Order Service', previous: $exception);
+            throw new RuntimeException('Không kết nối được Dịch vụ đơn hàng', previous: $exception);
         }
 
         if (! $response->successful() || ! is_array($response->json('data'))) {
-            throw new RuntimeException((string) ($response->json('message') ?: 'Order Service tu choi ngu canh thanh toan'));
+            throw new RuntimeException((string) ($response->json('message') ?: 'Dịch vụ đơn hàng từ chối ngữ cảnh thanh toán'));
         }
 
         return $response->json('data');
     }
 
+    // Thực hiện mark thanh toán paid.
     public function markPaymentPaid(int $orderId): array
     {
         return $this->updatePaymentStatus($orderId, [
@@ -36,6 +39,7 @@ class OrderServiceClient
         ]);
     }
 
+    // Thực hiện mark thanh toán thất bại.
     public function markPaymentFailed(int $orderId, string $reason): array
     {
         return $this->updatePaymentStatus($orderId, [
@@ -44,6 +48,7 @@ class OrderServiceClient
         ]);
     }
 
+    // Làm mới hoặc đặt lại giỏ hàng cho paid đơn hàng.
     public function clearCartForPaidOrder(int $orderId): array
     {
         try {
@@ -54,7 +59,7 @@ class OrderServiceClient
         } catch (ConnectionException $exception) {
             Log::error('payment.order_cart_clear.connection_failed', ['order_id' => $orderId, 'message' => $exception->getMessage()]);
 
-            return ['cleared' => false, 'status' => null, 'message' => 'Khong ket noi duoc Order Service'];
+            return ['cleared' => false, 'status' => null, 'message' => 'Không kết nối được Dịch vụ đơn hàng'];
         }
 
         return [
@@ -64,6 +69,7 @@ class OrderServiceClient
         ];
     }
 
+    // Cập nhật thanh toán trạng thái.
     private function updatePaymentStatus(int $orderId, array $payload): array
     {
         try {
@@ -78,7 +84,7 @@ class OrderServiceClient
                 'message' => $exception->getMessage(),
             ]);
 
-            return ['updated' => false, 'status' => null, 'message' => 'Khong ket noi duoc Order Service'];
+            return ['updated' => false, 'status' => null, 'message' => 'Không kết nối được Dịch vụ đơn hàng'];
         }
 
         return [
@@ -88,12 +94,13 @@ class OrderServiceClient
         ];
     }
 
+    // Thực hiện yêu cầu.
     private function request(): PendingRequest
     {
         $token = trim((string) config('services.internal.token'));
 
         if ($token === '') {
-            throw new RuntimeException('INTERNAL_SERVICE_TOKEN chua duoc cau hinh');
+            throw new RuntimeException('INTERNAL_SERVICE_TOKEN chưa được cấu hình');
         }
 
         return Http::acceptJson()
@@ -103,12 +110,13 @@ class OrderServiceClient
             ->retry(2, 100, null, false);
     }
 
+    // Thực hiện url.
     private function url(string $path): string
     {
         $baseUrl = rtrim((string) config('services.order.url'), '/');
 
         if ($baseUrl === '') {
-            throw new RuntimeException('ORDER_SERVICE_URL chua duoc cau hinh');
+            throw new RuntimeException('ORDER_SERVICE_URL chưa được cấu hình');
         }
 
         return $baseUrl.$path;

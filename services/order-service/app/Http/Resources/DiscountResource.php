@@ -7,6 +7,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class DiscountResource extends JsonResource
 {
+
+    // Thực hiện cho mảng.
     public function toArray(Request $request): array
     {
         $hasUsage = (int) $this->used_count > 0 || (int) $this->getAttribute('orders_count') > 0;

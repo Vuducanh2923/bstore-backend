@@ -1,12 +1,35 @@
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
-$php = 'C:\Users\Admin\AppData\Local\Microsoft\WinGet\Packages\PHP.PHP.8.3_Microsoft.Winget.Source_8wekyb3d8bbwe\php.exe'
-$phpConfig = 'C:\Users\Admin\Desktop\VuDucANh\tools\php83'
+function Resolve-PhpExecutable {
+    $command = Get-Command php.exe -ErrorAction SilentlyContinue
 
-if (-not (Test-Path -LiteralPath $php)) {
-    throw "PHP 8.3 was not found at $php"
+    if ($command) {
+        return $command.Source
+    }
+
+    $searchRoots = @(
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages'),
+        'C:\laragon\bin\php',
+        'C:\php',
+        'C:\xampp\php'
+    ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
+
+    foreach ($searchRoot in $searchRoots) {
+        $candidate = Get-ChildItem -LiteralPath $searchRoot -Filter php.exe -File -Recurse -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+
+        if ($candidate) {
+            return $candidate.FullName
+        }
+    }
+
+    throw 'PHP CLI was not found. Install PHP 8.2 or newer and add php.exe to PATH.'
 }
+
+$phpExecutable = Resolve-PhpExecutable
+$phpConfig = Split-Path -Parent $phpExecutable
 
 $services = @(
     @{ Name = 'api-gateway'; Path = 'services\api-gateway'; Port = 8000 },
@@ -32,7 +55,7 @@ foreach ($service in $services) {
 Set-Location -LiteralPath '$servicePath'
 `$Host.UI.RawUI.WindowTitle = '$title'
 `$env:PHPRC = '$phpConfig'
-& '$php' -S 127.0.0.1:$($service.Port) -t public public/index.php
+& '$phpExecutable' artisan serve --host=127.0.0.1 --port=$($service.Port)
 "@
     $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
 
@@ -41,3 +64,4 @@ Set-Location -LiteralPath '$servicePath'
 
 Write-Host 'Started all BStore microservices.'
 Write-Host 'Gateway: http://127.0.0.1:8000/api'
+Write-Host "PHP: $phpExecutable"

@@ -46,7 +46,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
             return response()->json([
                 'success' => false,
-                'message' => 'Du lieu khong hop le',
+                'message' => 'Dữ liệu không hợp lệ',
                 'data' => $exception->errors(),
             ], 422);
         });
@@ -57,7 +57,7 @@ return Application::configure(basePath: dirname(__DIR__))
             }
 
             return response()->json([
-                'message' => 'Unauthorized',
+                'message' => 'Bạn chưa đăng nhập.',
                 'code' => 'TOKEN_INVALID',
             ], 401);
         });
@@ -68,7 +68,7 @@ return Application::configure(basePath: dirname(__DIR__))
             }
 
             return response()->json([
-                'message' => 'Forbidden',
+                'message' => 'Bạn không có quyền thực hiện chức năng này.',
                 'code' => 'FORBIDDEN',
             ], 403);
         });
@@ -80,7 +80,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay du lieu',
+                'message' => 'Không tìm thấy dữ liệu',
                 'data' => null,
             ], 404);
         });
@@ -92,7 +92,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay du lieu',
+                'message' => 'Không tìm thấy dữ liệu',
                 'data' => null,
             ], 404);
         });

@@ -204,6 +204,7 @@ test('admin inventory mutation rejects negative and server-owned reserved quanti
         ->and(Inventory::first()->reserved_quantity)->toBe(4);
 });
 
+// Thực hiện reservation dữ liệu gửi.
 function reservationPayload(string $reference, int $quantity): array
 {
     return [
@@ -215,6 +216,7 @@ function reservationPayload(string $reference, int $quantity): array
     ];
 }
 
+// Thực hiện nội bộ post.
 function internalPost($test, string $uri, array $payload = [])
 {
     return $test

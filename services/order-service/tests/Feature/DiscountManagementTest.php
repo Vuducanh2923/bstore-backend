@@ -51,17 +51,19 @@ beforeEach(function () {
     });
 });
 
+// Thực hiện mã giảm giá token.
 function discountToken(string $role = 'ADMIN', int $id = 90): string
 {
     return app(AuthTokenService::class)->generate($id, $role, "user{$id}@example.com");
 }
 
+// Thực hiện mã giảm giá dữ liệu gửi.
 function discountPayload(array $overrides = []): array
 {
     return array_merge([
         'code' => ' bstore10 ',
         'name' => 'Giam gia thang 7',
-        'description' => 'Giam cho don hang hop le',
+        'description' => 'Giảm cho đơn hàng hợp lệ',
         'discount_type' => 'percentage',
         'discount_value' => 10,
         'max_discount_amount' => 500000,
@@ -74,6 +76,7 @@ function discountPayload(array $overrides = []): array
     ], $overrides);
 }
 
+// Thực hiện insert mã giảm giá.
 function insertDiscount(array $overrides = []): int
 {
     return DB::connection('bstore_order')->table('discounts')->insertGetId(array_merge([
@@ -116,7 +119,7 @@ test('duplicate code is rejected case insensitively', function () {
 
     $this->withToken(discountToken())->postJson('/api/admin/discount-codes', discountPayload([
         'code' => 'bstore10',
-    ]))->assertConflict()->assertJsonPath('message', 'Ma giam gia da ton tai');
+    ]))->assertConflict()->assertJsonPath('message', 'Mã giảm giá đã tồn tại');
 });
 
 test('percentage greater than one hundred is invalid', function () {
@@ -137,7 +140,7 @@ test('unused discount is soft deleted', function () {
 
     $this->withToken(discountToken())->deleteJson("/api/admin/discount-codes/{$id}")
         ->assertOk()
-        ->assertJsonPath('message', 'Xoa ma giam gia thanh cong');
+        ->assertJsonPath('message', 'Xóa mã giảm giá thành công');
 
     expect(Discount::find($id))->toBeNull()
         ->and(Discount::withTrashed()->find($id))->not->toBeNull();
@@ -155,7 +158,7 @@ test('used discount is deactivated instead of deleted', function () {
 
     $this->withToken(discountToken())->deleteJson("/api/admin/discount-codes/{$id}")
         ->assertOk()
-        ->assertJsonPath('message', 'Ma giam gia da duoc ngung ap dung')
+        ->assertJsonPath('message', 'Mã giảm giá đã được ngừng áp dụng')
         ->assertJsonPath('data.status', 'inactive');
 
     expect(Discount::find($id))->not->toBeNull();
@@ -193,7 +196,7 @@ test('expired discount cannot be applied', function () {
 
     expect(fn () => app(OrderDiscountService::class)->resolve([
         ['discount_id' => $id],
-    ], 1000000, 10))->toThrow(ValidationException::class, 'da het han');
+    ], 1000000, 10))->toThrow(ValidationException::class, 'đã hết hạn');
 });
 
 test('discount over usage limit cannot be applied', function () {
@@ -201,7 +204,7 @@ test('discount over usage limit cannot be applied', function () {
 
     expect(fn () => app(OrderDiscountService::class)->resolve([
         ['discount_id' => $id],
-    ], 1000000, 10))->toThrow(ValidationException::class, 'da het luot su dung');
+    ], 1000000, 10))->toThrow(ValidationException::class, 'đã hết lượt sử dụng');
 });
 
 test('percentage discount respects maximum amount and per customer usage', function () {
@@ -225,5 +228,5 @@ test('percentage discount respects maximum amount and per customer usage', funct
 
     expect(fn () => DB::connection('bstore_order')->transaction(
         fn () => app(OrderDiscountService::class)->resolve([['discount_id' => $id]], 1000000, 10),
-    ))->toThrow(ValidationException::class, 'het luot');
+    ))->toThrow(ValidationException::class, 'hết lượt');
 });

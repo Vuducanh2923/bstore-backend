@@ -9,6 +9,8 @@ use RuntimeException;
 
 class CustomerOrderClient
 {
+
+    // Thực hiện đơn hàng cho khách hàng.
     public function ordersForCustomer(int $userId): array
     {
         $baseUrl = rtrim((string) config('services.order.url'), '/');
@@ -17,11 +19,11 @@ class CustomerOrderClient
             $response = $this->request()
                 ->get("{$baseUrl}/api/internal/customers/{$userId}/orders");
         } catch (ConnectionException $exception) {
-            throw new RuntimeException('Order Service khong kha dung', previous: $exception);
+            throw new RuntimeException('Dịch vụ đơn hàng không khả dụng', previous: $exception);
         }
 
         if ($response->failed()) {
-            throw new RuntimeException('Khong lay duoc lich su mua hang');
+            throw new RuntimeException('Không lấy được lịch sử mua hàng');
         }
 
         $payload = $response->json();
@@ -31,6 +33,7 @@ class CustomerOrderClient
             : [];
     }
 
+    // Thực hiện yêu cầu.
     private function request(): PendingRequest
     {
         return Http::acceptJson()

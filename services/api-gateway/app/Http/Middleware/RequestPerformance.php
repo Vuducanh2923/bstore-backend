@@ -11,8 +11,11 @@ use Symfony\Component\HttpFoundation\Response;
 
 class RequestPerformance
 {
+
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(private readonly RequestMetrics $metrics) {}
 
+    // Xử lý dữ liệu theo nghiệp vụ của hàm.
     public function handle(Request $request, Closure $next): Response
     {
         $requestId = (string) ($request->header('X-Request-ID') ?: Str::uuid());

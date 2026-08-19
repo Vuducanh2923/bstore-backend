@@ -7,11 +7,14 @@ use Illuminate\Http\Response;
 
 class SwaggerController extends Controller
 {
+
+    // Thực hiện json.
     public function json(): JsonResponse
     {
         return response()->json(config('openapi'));
     }
 
+    // Thực hiện ui.
     public function ui(): Response
     {
         $title = htmlspecialchars(

@@ -294,7 +294,7 @@ return [
                     ],
                 ],
             ],
-            'Unauthorized' => [
+            'Bạn chưa đăng nhập.' => [
                 'description' => 'Invalid credentials',
                 'content' => [
                     'application/json' => [
@@ -443,7 +443,7 @@ return [
                 'type' => 'object',
                 'properties' => [
                     'success' => ['type' => 'boolean', 'example' => true],
-                    'message' => ['type' => 'string', 'example' => 'Xoa du lieu thanh cong'],
+                    'message' => ['type' => 'string', 'example' => 'Xóa dữ liệu thành công'],
                 ],
             ],
             'ErrorResponse' => [
@@ -456,7 +456,7 @@ return [
             'ValidationErrorResponse' => [
                 'type' => 'object',
                 'properties' => [
-                    'message' => ['type' => 'string', 'example' => 'The given data was invalid.'],
+                    'message' => ['type' => 'string', 'example' => 'Dữ liệu đã cung cấp không hợp lệ.'],
                     'errors' => [
                         'type' => 'object',
                         'additionalProperties' => [

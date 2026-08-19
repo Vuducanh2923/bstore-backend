@@ -4,6 +4,8 @@ namespace App\Http\Requests\Profile;
 
 class UpdateAddressRequest extends StoreAddressRequest
 {
+
+    // Trả về các quy tắc kiểm tra dữ liệu đầu vào.
     public function rules(): array
     {
         return [

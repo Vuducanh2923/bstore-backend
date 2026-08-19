@@ -10,8 +10,11 @@ use Throwable;
 
 class UploadController extends Controller
 {
+
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(private readonly CloudinaryService $cloudinaryService) {}
 
+    // Thực hiện hình ảnh.
     public function image(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -25,13 +28,35 @@ class UploadController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Upload anh len Cloudinary that bai',
+                'message' => 'Tải ảnh lên Cloudinary thất bại',
             ], 502);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Upload anh thanh cong',
+            'message' => 'Tải ảnh thành công',
+            'data' => [
+                'image_url' => $uploadedImage['secure_url'],
+                'url' => $uploadedImage['secure_url'],
+                'public_id' => $uploadedImage['public_id'],
+            ],
+        ], 201);
+    }
+
+    public function avatar(Request $request): JsonResponse
+    {
+        $data = $request->validate(['image' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120']]);
+
+        try {
+            $uploadedImage = $this->cloudinaryService->uploadAvatarImage($data['image']);
+        } catch (Throwable $exception) {
+            report($exception);
+            return response()->json(['success' => false, 'message' => 'Tải ảnh đại diện lên Cloudinary thất bại'], 502);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Tải ảnh đại diện thành công',
             'data' => [
                 'image_url' => $uploadedImage['secure_url'],
                 'url' => $uploadedImage['secure_url'],

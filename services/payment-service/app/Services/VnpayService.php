@@ -17,12 +17,14 @@ class VnpayService
         'ipn_url' => 'VNPAY_IPN_URL',
     ];
 
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(
 
         private readonly PaymentService $payments,
         private readonly OrderServiceClient $orders,
     ) {}
 
+    // Tạo hoặc lưu thanh toán url.
     public function createPaymentUrl(int $orderId, float|int|string $amount, string $orderInfo, string $ipAddress): array
     {
         $this->ensureConfigured();
@@ -111,7 +113,7 @@ class VnpayService
 
         if (! $this->isSuccessfulPayment($payload)) {
             $this->payments->recordVnpayFailed($payment, $payload);
-            $orderUpdate = $this->orders->markPaymentFailed((int) $payment->order_id, 'VNPAY tu choi hoac giao dich khong thanh cong');
+            $orderUpdate = $this->orders->markPaymentFailed((int) $payment->order_id, 'VNPAY từ chối hoặc giao dịch không thành công');
 
             return ($orderUpdate['updated'] ?? false) ? $this->ipnResult('00') : $this->ipnResult('99');
         }
@@ -121,6 +123,7 @@ class VnpayService
         return $this->ipnResult($settlement['synchronized'] ? '00' : '99');
     }
 
+    // Thực hiện settle thành công thanh toán.
     private function settleSuccessfulPayment(Payment $payment, array $payload): array
     {
         $orderUpdate = $this->orders->markPaymentPaid((int) $payment->order_id);
@@ -147,6 +150,7 @@ class VnpayService
         return ['synchronized' => true, 'payment' => $payment];
     }
 
+    // Thực hiện xác minh chữ ký.
     public function verifySignature(array $payload): bool
     {
         $received = (string) ($payload['vnp_SecureHash'] ?? '');
@@ -161,6 +165,7 @@ class VnpayService
         return $received !== '' && hash_equals($received, $calculated);
     }
 
+    // Thực hiện mã băm dữ liệu.
     private function hashData(array $params): string
     {
         unset($params['vnp_SecureHash'], $params['vnp_SecureHashType']);
@@ -171,17 +176,20 @@ class VnpayService
             ->implode('&');
     }
 
+    // Thực hiện bảo mật mã băm.
     private function secureHash(string $data): string
     {
         return hash_hmac('sha512', $data, $this->config('hash_secret'));
     }
 
+    // Kiểm tra thành công thanh toán.
     private function isSuccessfulPayment(array $payload): bool
     {
         return (string) ($payload['vnp_ResponseCode'] ?? '') === '00'
             && (string) ($payload['vnp_TransactionStatus'] ?? '') === '00';
     }
 
+    // Thực hiện số tiền khớp.
     private function amountMatches(Payment $payment, array $payload): bool
     {
         return isset($payload['vnp_Amount'])
@@ -189,11 +197,13 @@ class VnpayService
             && (int) $payload['vnp_Amount'] === $this->toVnpayAmount($payment->amount);
     }
 
+    // Thực hiện cho vnpay số tiền.
     private function toVnpayAmount(float|int|string $amount): int
     {
         return (int) round(((float) $amount) * 100);
     }
 
+    // Thực hiện thanh toán dữ liệu.
     private function paymentData(Payment $payment): array
     {
         return [
@@ -206,6 +216,7 @@ class VnpayService
         ];
     }
 
+    // Thực hiện ipn kết quả.
     private function ipnResult(string $code): array
     {
         return ['response' => match ($code) {
@@ -217,6 +228,7 @@ class VnpayService
         }];
     }
 
+    // Kiểm tra đã cấu hình.
     private function ensureConfigured(): void
     {
         $missing = collect(self::REQUIRED_CONFIG)
@@ -225,10 +237,11 @@ class VnpayService
             ->all();
 
         if ($missing !== []) {
-            throw new RuntimeException('Cau hinh VNPAY chua day du: '.implode(', ', $missing));
+            throw new RuntimeException('Cấu hình VNPAY chưa đầy đủ: '.implode(', ', $missing));
         }
     }
 
+    // Thực hiện cấu hình.
     private function config(string $key, ?string $default = null): string
     {
         return trim((string) config("services.vnpay.{$key}", $default));

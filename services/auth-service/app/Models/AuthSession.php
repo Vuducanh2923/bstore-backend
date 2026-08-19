@@ -29,6 +29,7 @@ class AuthSession extends Model
         'refresh_token_hash',
     ];
 
+    // Khai báo kiểu chuyển đổi cho các thuộc tính của model.
     protected function casts(): array
     {
         return [
@@ -39,6 +40,7 @@ class AuthSession extends Model
         ];
     }
 
+    // Cung cấp trạng thái và thao tác cho dữ liệu theo nghiệp vụ của hàm.
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');

@@ -183,11 +183,13 @@ beforeEach(function () {
     });
 });
 
+// Thực hiện đơn hàng quy trình token.
 function orderWorkflowToken(int $id, string $role, string $email): string
 {
     return app(AuthTokenService::class)->generate($id, $role, $email);
 }
 
+// Thực hiện insert quy trình đơn hàng.
 function insertWorkflowOrder(array $overrides = []): int
 {
     return DB::connection('bstore_order')->table('orders')->insertGetId([
@@ -223,7 +225,7 @@ test('staff accepts an order and only the assigned staff can move status sequent
 
     $this->withToken($staffToken)
         ->putJson("/api/admin/orders/{$orderId}/assign", [
-            'processing_note' => 'Nhan xu ly ca sang',
+            'processing_note' => 'Nhận xử lý ca sang',
         ])
         ->assertOk()
         ->assertJsonPath('data.status', 'processing')
@@ -313,14 +315,14 @@ test('unpaid order is cancelled immediately but shipping order cannot be cancell
     $customer = orderWorkflowToken(10, 'CUSTOMER', 'customer@example.com');
 
     $this->withToken($customer)->postJson("/api/customer/orders/{$pendingOrderId}/cancel", [
-        'reason' => 'Khong con nhu cau',
+        'reason' => 'Không con nhu cau',
     ])->assertOk()
         ->assertJsonPath('data.status', 'cancelled')
         ->assertJsonPath('data.cancel_request_status', 'approved')
         ->assertJsonPath('data.refund_status', 'none');
 
     $this->withToken($customer)->postJson("/api/customer/orders/{$shippingOrderId}/cancel", [
-        'reason' => 'Khong con nhu cau',
+        'reason' => 'Không con nhu cau',
     ])->assertUnprocessable();
 });
 
@@ -342,7 +344,7 @@ test('delivered order can complete normally and return follows its own workflow'
     ])->assertOk()->assertJsonPath('data.status', 'completed');
 
     $this->withToken(orderWorkflowToken(10, 'CUSTOMER', 'customer@example.com'))
-        ->postJson("/api/customer/orders/{$returnOrderId}/return", ['reason' => 'San pham bi loi'])
+        ->postJson("/api/customer/orders/{$returnOrderId}/return", ['reason' => 'Sản phẩm bị lỗi'])
         ->assertOk()
         ->assertJsonPath('data.status', 'delivered')
         ->assertJsonPath('data.return_status', 'pending');
@@ -374,7 +376,7 @@ test('refund flow is restricted to assigned staff or admin', function () {
     $refundId = $this->withToken(orderWorkflowToken(10, 'CUSTOMER', 'customer@example.com'))
         ->postJson('/api/refunds', [
             'order_id' => $orderId,
-            'reason' => 'San pham loi',
+            'reason' => 'Sản phẩm loi',
             'amount' => 100000,
         ])
         ->assertCreated()
@@ -395,7 +397,7 @@ test('refund flow is restricted to assigned staff or admin', function () {
 
     $this->withToken(orderWorkflowToken(2, 'STAFF', 'staff2@example.com'))
         ->putJson("/api/refunds/{$refundId}/refunding", [
-            'admin_note' => 'Gui VNPay',
+            'admin_note' => 'Gửi VNPay',
         ])
         ->assertOk()
         ->assertJsonPath('data.status', 'refunded');
@@ -424,7 +426,7 @@ test('customer refund validates delivered paid amount and rejects duplicates', f
 
     $this->withToken($customer)->postJson('/api/refunds', [
         'order_id' => $processingOrderId,
-        'reason' => 'San pham loi',
+        'reason' => 'Sản phẩm loi',
     ])->assertUnprocessable();
 
     $deliveredOrderId = insertWorkflowOrder([
@@ -435,18 +437,18 @@ test('customer refund validates delivered paid amount and rejects duplicates', f
     ]);
     $this->withToken($customer)->postJson('/api/refunds', [
         'order_id' => $deliveredOrderId,
-        'reason' => 'San pham loi',
+        'reason' => 'Sản phẩm loi',
         'amount' => 100001,
     ])->assertUnprocessable();
 
     $this->withToken($customer)->postJson('/api/refunds', [
         'order_id' => $deliveredOrderId,
-        'reason' => 'San pham loi',
+        'reason' => 'Sản phẩm loi',
         'amount' => 100000,
     ])->assertCreated();
     $this->withToken($customer)->postJson('/api/refunds', [
         'order_id' => $deliveredOrderId,
-        'reason' => 'Gui trung',
+        'reason' => 'Gửi trung',
         'amount' => 100000,
     ])->assertUnprocessable();
 });
@@ -464,7 +466,7 @@ test('online refund remains refunding while provider processes and retries idemp
     $refundId = $this->withToken(orderWorkflowToken(10, 'CUSTOMER', 'customer@example.com'))
         ->postJson('/api/refunds', [
             'order_id' => $orderId,
-            'reason' => 'San pham loi',
+            'reason' => 'Sản phẩm loi',
         ])->assertCreated()->json('data.id');
     $staff = orderWorkflowToken(2, 'STAFF', 'staff2@example.com');
     $this->withToken($staff)->putJson("/api/refunds/{$refundId}/approve")->assertOk();
@@ -499,7 +501,7 @@ test('complaint stores assigned staff contact and only that staff can resolve it
         ->postJson('/api/complaints', [
             'order_id' => $orderId,
             'title' => 'Giao hang cham',
-            'content' => 'Don hang giao cham hon hen.',
+            'content' => 'Đơn hàng giao chậm hơn hẹn.',
         ])
         ->assertCreated()
         ->assertJsonPath('data.assigned_staff_name', 'Staff Two')
@@ -508,7 +510,7 @@ test('complaint stores assigned staff contact and only that staff can resolve it
 
     $this->withToken(orderWorkflowToken(3, 'STAFF', 'staff3@example.com'))
         ->putJson("/api/complaints/{$complaintId}/resolve", [
-            'reply' => 'Da xu ly',
+            'reply' => 'Da xử lý',
         ])
         ->assertForbidden();
 
@@ -519,9 +521,9 @@ test('complaint stores assigned staff contact and only that staff can resolve it
 
     $this->withToken(orderWorkflowToken(2, 'STAFF', 'staff2@example.com'))
         ->putJson("/api/complaints/{$complaintId}/resolve", [
-            'reply' => 'Da lien he khach hang',
+            'reply' => 'Đã liên hệ khách hàng',
         ])
         ->assertOk()
         ->assertJsonPath('data.status', 'resolved')
-        ->assertJsonPath('data.reply', 'Da lien he khach hang');
+        ->assertJsonPath('data.reply', 'Đã liên hệ khách hàng');
 });

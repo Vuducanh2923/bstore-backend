@@ -55,11 +55,13 @@ class ProductService
 
     private ?bool $inventoryTablesAvailable = null;
 
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(
         private readonly CloudinaryService $cloudinaryService,
         private readonly ProductDescriptionSanitizer $descriptionSanitizer,
     ) {}
 
+    // Thực hiện có phân trang danh sách.
     public function paginatedList(
         array $filters = [],
         bool $saleOnly = false,
@@ -71,6 +73,7 @@ class ProductService
 
         $query = Product::query()
             ->select($listColumns)
+            ->withCount('variants')
             ->with([
                 'category' => fn ($categoryQuery) => $categoryQuery->select(['id', 'name', 'slug', 'status']),
                 'brand' => fn ($brandQuery) => $brandQuery->select($this->brandRelationColumns()),
@@ -114,6 +117,7 @@ class ProductService
             ->through(fn (Product $product): array => $this->listItem($product));
     }
 
+    // Thực hiện sale có phân trang danh sách.
     public function salePaginatedList(array $filters = []): LengthAwarePaginator
     {
         return $this->paginatedList([
@@ -122,6 +126,7 @@ class ProductService
         ], true);
     }
 
+    // Thực hiện new có phân trang danh sách.
     public function newPaginatedList(array $filters = []): LengthAwarePaginator
     {
         return $this->paginatedList([
@@ -131,6 +136,7 @@ class ProductService
         ], false, self::NEW_PRODUCTS_PER_PAGE, self::NEW_PRODUCTS_PER_PAGE);
     }
 
+    // Lấy toàn bộ dữ liệu.
     public function all(array $filters = []): Collection
     {
         $query = Product::with(self::RELATIONS);
@@ -173,6 +179,7 @@ class ProductService
         return $query->orderByDesc('id')->get();
     }
 
+    // Lấy bởi slug.
     public function findBySlug(string $slug): ?Product
     {
         return Product::with(self::RELATIONS)
@@ -180,11 +187,13 @@ class ProductService
             ->first();
     }
 
+    // Lấy bởi id.
     public function findById(int $id): ?Product
     {
         return Product::with(self::RELATIONS)->find($id);
     }
 
+    // Tạo hoặc lưu dữ liệu theo nghiệp vụ của hàm.
     public function create(array $data): Product
     {
         if (array_key_exists('description', $data)) {
@@ -220,6 +229,7 @@ class ProductService
         }
     }
 
+    // Cập nhật dữ liệu theo nghiệp vụ của hàm.
     public function update(Product $product, array $data): Product
     {
         if (array_key_exists('description', $data)) {
@@ -281,6 +291,7 @@ class ProductService
         return $updatedProduct;
     }
 
+    // Tải hoặc xuất inline sản phẩm hình ảnh.
     private function uploadInlineProductImages(array $data): array
     {
         if (! array_key_exists('images', $data) || ! is_array($data['images'])) {
@@ -311,6 +322,7 @@ class ProductService
         return [$data, $uploadedPublicIds];
     }
 
+    // Xóa hoặc hủy dữ liệu theo nghiệp vụ của hàm.
     public function delete(Product $product): void
     {
         $variantIds = ProductVariant::query()
@@ -335,6 +347,7 @@ class ProductService
         $this->deleteCloudinaryImages($publicIds, false);
     }
 
+    // Thực hiện đồng bộ variants.
     private function syncVariants(int $productId, array $variants, bool $removeMissing = false): void
     {
         $existing = ProductVariant::query()
@@ -377,6 +390,7 @@ class ProductService
         }
     }
 
+    // Kiểm tra tồn kho.
     private function ensureInventory(ProductVariant $variant, ?int $quantity): void
     {
         if (! Schema::connection('bstore_catalog')->hasTable('inventories')) {
@@ -394,7 +408,7 @@ class ProductService
 
         if ($quantity < (int) $inventory->reserved_quantity) {
             throw new InventoryReservationException(
-                'Variant stock cannot be lower than its reserved quantity',
+                'Tồn kho của biến thể không được nhỏ hơn số lượng đã giữ',
                 409,
                 ['product_variant_id' => $variant->id],
             );
@@ -404,6 +418,7 @@ class ProductService
         $inventory->save();
     }
 
+    // Xóa hoặc hủy biến thể.
     private function removeVariant(ProductVariant $variant): void
     {
         $this->assertVariantsCanBeRemoved([(int) $variant->id]);
@@ -425,6 +440,7 @@ class ProductService
         $variant->delete();
     }
 
+    // Thực hiện assert variants can be removed.
     private function assertVariantsCanBeRemoved(array $variantIds): void
     {
         if ($variantIds === []) {
@@ -437,7 +453,7 @@ class ProductService
 
         if ($blockingReservation) {
             throw new InventoryReservationException(
-                'Cannot remove a variant with inventory reservation history',
+                'Không thể xóa biến thể đã có lịch sử giữ tồn kho',
                 409,
                 [
                     'reference' => $blockingReservation->reference,
@@ -452,12 +468,13 @@ class ProductService
             && InventoryTransaction::query()->whereIn('product_variant_id', $variantIds)->exists()
         ) {
             throw new InventoryReservationException(
-                'Cannot remove a variant with inventory transaction history',
+                'Không thể xóa biến thể đã có lịch sử giao dịch tồn kho',
                 409,
             );
         }
     }
 
+    // Thực hiện đồng bộ hình ảnh.
     private function syncImages(int $productId, array $images): void
     {
         foreach ($images as $image) {
@@ -471,6 +488,7 @@ class ProductService
         }
     }
 
+    // Thực hiện sản phẩm hình ảnh công khai ids.
     private function productImagePublicIds(int $productId): array
     {
         return ProductImage::where('product_id', $productId)
@@ -483,6 +501,7 @@ class ProductService
             ->all();
     }
 
+    // Thực hiện hình ảnh công khai ids.
     private function imagePublicIds(array $images): array
     {
         return collect($images)
@@ -494,6 +513,7 @@ class ProductService
             ->all();
     }
 
+    // Thực hiện cùng existing sản phẩm hình ảnh công khai ids.
     private function withExistingProductImagePublicIds(int $productId, array $images): array
     {
         $publicIdsByUrl = ProductImage::where('product_id', $productId)
@@ -513,6 +533,7 @@ class ProductService
         }, $images);
     }
 
+    // Xóa hoặc hủy cloudinary hình ảnh.
     private function deleteCloudinaryImages(array $publicIds, bool $throw = true): void
     {
         foreach (array_unique(array_filter($publicIds)) as $publicId) {
@@ -528,6 +549,7 @@ class ProductService
         }
     }
 
+    // Thực hiện áp dụng sale bộ lọc.
     private function applySaleFilter($query, array $productColumns): void
     {
         $saleColumns = array_values(array_intersect(['discount_percent', 'sale_percent'], $productColumns));
@@ -576,6 +598,7 @@ class ProductService
         });
     }
 
+    // Thực hiện only đang hoạt động relations.
     private function onlyActiveRelations($query, array $productColumns): void
     {
         if (in_array('category_id', $productColumns, true)) {
@@ -587,6 +610,7 @@ class ProductService
         }
     }
 
+    // Thực hiện áp dụng danh sách filters.
     private function applyListFilters($query, array $filters): void
     {
         if (! empty($filters['category_id'])) {
@@ -646,6 +670,7 @@ class ProductService
         }
     }
 
+    // Lấy mặt hàng.
     private function listItem(Product $product): array
     {
         $rawSalePercent = $this->loadedAttribute($product, 'sale_percent');
@@ -678,6 +703,7 @@ class ProductService
                 'slug' => $product->brand->slug,
                 'logo' => $product->brand->logo,
             ] : null,
+            'variants_count' => max(1, (int) $product->variants_count),
             'rating' => $this->loadedAttribute($product, 'rating'),
             'total_quantity' => $product->total_quantity,
             'total_reserved' => $product->total_reserved,
@@ -686,12 +712,14 @@ class ProductService
         ];
     }
 
+    // Thực hiện resolved mã giảm giá percent.
     private function resolvedDiscountPercent(Product $product): mixed
     {
         return $this->loadedAttribute($product, 'discount_percent')
             ?? $this->loadedAttribute($product, 'sale_percent');
     }
 
+    // Thực hiện resolved sale price.
     private function resolvedSalePrice(Product $product, mixed $discountPercent): mixed
     {
         $salePrice = $this->loadedAttribute($product, 'sale_price');
@@ -711,6 +739,7 @@ class ProductService
             : null;
     }
 
+    // Thực hiện loaded thuộc tính.
     private function loadedAttribute(Product $product, string $attribute): mixed
     {
         return array_key_exists($attribute, $product->getAttributes())
@@ -718,6 +747,7 @@ class ProductService
             : null;
     }
 
+    // Thực hiện áp dụng danh sách sort.
     private function applyListSort($query, string $sort, array $productColumns): void
     {
         match ($sort) {
@@ -731,6 +761,7 @@ class ProductService
         };
     }
 
+    // Thực hiện đơn hàng bởi created at.
     private function orderByCreatedAt($query, array $productColumns, string $direction): void
     {
         if (in_array('created_at', $productColumns, true)) {
@@ -744,11 +775,13 @@ class ProductService
             : $query->orderByDesc('id');
     }
 
+    // Thực hiện sản phẩm columns.
     private function productColumns(): array
     {
         return $this->cachedProductColumns ??= Schema::connection('bstore_catalog')->getColumnListing('products');
     }
 
+    // Thực hiện tồn kho tables available.
     private function inventoryTablesAvailable(): bool
     {
         return $this->inventoryTablesAvailable ??= (
@@ -757,6 +790,7 @@ class ProductService
         );
     }
 
+    // Thực hiện thương hiệu relation columns.
     private function brandRelationColumns(): array
     {
         if ($this->cachedBrandRelationColumns !== null) {
@@ -772,6 +806,7 @@ class ProductService
         return $this->cachedBrandRelationColumns = $columns;
     }
 
+    // Thực hiện cùng sale pricing.
     private function withSalePricing(array $data, array $productColumns, ?Product $product = null): array
     {
         if (array_key_exists('discount_percent', $data) && ! array_key_exists('sale_percent', $data)) {
@@ -827,6 +862,7 @@ class ProductService
         return $data;
     }
 
+    // Thực hiện áp dụng bảo hành policy.
     private function applyWarrantyPolicy(Product $product, array &$productData, ?array $warrantyPolicy): void
     {
         if ($warrantyPolicy === null) {
@@ -847,6 +883,7 @@ class ProductService
         $productData['warranty_policy_id'] = WarrantyPolicy::create($policyData)->id;
     }
 
+    // Chuẩn hóa bảo hành policy.
     private function normalizeWarrantyPolicy(array $warrantyPolicy): array
     {
         if (isset($warrantyPolicy['warranty_months']) && ! isset($warrantyPolicy['duration_months'])) {

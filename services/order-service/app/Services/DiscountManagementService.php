@@ -13,8 +13,10 @@ class DiscountManagementService
 
     private const MAX_PER_PAGE = 100;
 
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(private readonly UserDirectoryService $users) {}
 
+    // Tạo hoặc lưu dữ liệu theo nghiệp vụ của hàm.
     public function create(array $data, int $creatorId): Discount
     {
         return DB::connection('bstore_order')->transaction(function () use ($data, $creatorId): Discount {
@@ -25,7 +27,7 @@ class DiscountManagementService
                 ->exists();
 
             if ($exists) {
-                throw new DiscountConflictException('Ma giam gia da ton tai');
+                throw new DiscountConflictException('Mã giảm giá đã tồn tại');
             }
 
             return Discount::create([
@@ -47,6 +49,7 @@ class DiscountManagementService
         });
     }
 
+    // Thực hiện có phân trang.
     public function paginated(array $filters): LengthAwarePaginator
     {
         $query = Discount::query()->withCount(['orderDiscounts as orders_count']);
@@ -96,6 +99,7 @@ class DiscountManagementService
             ->paginate($this->perPage($filters));
     }
 
+    // Lấy toàn bộ dữ liệu.
     public function find(int $id): ?Discount
     {
         $discount = Discount::withCount(['orderDiscounts as orders_count'])->find($id);
@@ -103,6 +107,7 @@ class DiscountManagementService
         return $discount ? $this->hydrate($discount) : null;
     }
 
+    // Xóa hoặc hủy or deactivate.
     public function deleteOrDeactivate(int $id): ?array
     {
         return DB::connection('bstore_order')->transaction(function () use ($id): ?array {
@@ -129,6 +134,7 @@ class DiscountManagementService
         });
     }
 
+    // Thực hiện deactivate.
     public function deactivate(int $id): ?Discount
     {
         return DB::connection('bstore_order')->transaction(function () use ($id): ?Discount {
@@ -146,6 +152,7 @@ class DiscountManagementService
         });
     }
 
+    // Thực hiện hydrate.
     public function hydrate(Discount $discount): Discount
     {
         if (! $discount->getAttribute('orders_count')) {
@@ -158,6 +165,7 @@ class DiscountManagementService
         return $discount;
     }
 
+    // Thực hiện per trang.
     private function perPage(array $filters): int
     {
         return min(self::MAX_PER_PAGE, max(1, (int) ($filters['per_page'] ?? $filters['limit'] ?? self::DEFAULT_PER_PAGE)));

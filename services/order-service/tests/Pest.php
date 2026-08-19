@@ -57,11 +57,13 @@ function something()
     // ..
 }
 
+// Thực hiện nội bộ service headers.
 function internalServiceHeaders(): array
 {
     return ['X-Internal-Service-Token' => 'test-internal-token'];
 }
 
+// Thực hiện khách hàng access token.
 function customerAccessToken(int $userId = 10): string
 {
     return app(AuthTokenService::class)->generate($userId, 'CUSTOMER', "customer{$userId}@example.com");

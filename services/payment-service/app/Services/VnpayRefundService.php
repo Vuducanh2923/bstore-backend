@@ -15,8 +15,10 @@ class VnpayRefundService
 {
     private const VERSION = '2.1.0';
 
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(private readonly PaymentService $payments) {}
 
+    // Thực hiện hoàn tiền.
     public function refund(
         int $orderId,
         float|int|string $amount,
@@ -28,14 +30,14 @@ class VnpayRefundService
         $amount = round((float) $amount, 2);
 
         if ($amount <= 0) {
-            throw new RuntimeException('So tien hoan phai lon hon 0');
+            throw new RuntimeException('Số tiền hoàn phải lớn hơn 0');
         }
 
         $existing = PaymentRefund::query()->where('request_id', $idempotencyKey)->first();
 
         if ($existing) {
             if ((int) $existing->order_id !== $orderId || abs((float) $existing->amount - $amount) > 0.001) {
-                throw new RuntimeException('Idempotency key da duoc su dung cho yeu cau khac');
+                throw new RuntimeException('Idempotency key đã được sử dụng cho yêu cầu khác');
             }
 
             if (in_array($existing->status, ['refunded', 'processing'], true)) {
@@ -46,13 +48,13 @@ class VnpayRefundService
         $payment = $this->payments->paidVnpayPaymentForOrder($orderId);
 
         if (! $payment) {
-            throw new RuntimeException('Khong tim thay giao dich VNPAY da thanh toan');
+            throw new RuntimeException('Không tìm thấy giao dịch VNPAY đã thanh toán');
         }
 
         $refundable = (float) $payment->amount - $this->payments->refundedAmount($payment);
 
         if ($amount > $refundable + 0.001) {
-            throw new RuntimeException('So tien hoan vuot qua so tien con co the hoan');
+            throw new RuntimeException('Số tiền hoàn vượt quá số tiền còn có thể hoàn');
         }
 
         $transactionType = abs($amount - (float) $payment->amount) < 0.001 ? '02' : '03';
@@ -98,18 +100,18 @@ class VnpayRefundService
                 ->timeout((int) config('services.timeout', 10))
                 ->post($this->config('refund_url'), $request);
         } catch (ConnectionException $exception) {
-            throw new RuntimeException('Khong ket noi duoc VNPAY de hoan tien', previous: $exception);
+            throw new RuntimeException('Không kết nối được VNPAY để hoàn tiền', previous: $exception);
         }
 
         $body = $response->json();
 
         if (! $response->successful() || ! is_array($body)) {
-            throw new RuntimeException('VNPAY tra ve phan hoi hoan tien khong hop le');
+            throw new RuntimeException('VNPAY trả về phản hồi hoàn tiền không hợp lệ');
         }
 
         if (! $this->verifyResponse($body)) {
             $this->updateRefund($refund, $body, 'failed');
-            throw new RuntimeException('Chu ky phan hoi hoan tien VNPAY khong hop le');
+            throw new RuntimeException('Chữ ký phản hồi hoàn tiền VNPAY không hợp lệ');
         }
 
         if ((string) ($body['vnp_TmnCode'] ?? '') !== $request['vnp_TmnCode']
@@ -117,7 +119,7 @@ class VnpayRefundService
             || (int) ($body['vnp_Amount'] ?? -1) !== $request['vnp_Amount']
             || (string) ($body['vnp_TransactionType'] ?? '') !== $request['vnp_TransactionType']) {
             $this->updateRefund($refund, $body, 'failed');
-            throw new RuntimeException('Phan hoi hoan tien VNPAY khong khop yeu cau');
+            throw new RuntimeException('Phản hồi hoàn tiền VNPAY không khớp yêu cầu');
         }
 
         $responseCode = (string) ($body['vnp_ResponseCode'] ?? '');
@@ -132,7 +134,7 @@ class VnpayRefundService
         $refund = $this->updateRefund($refund, $body, $status);
 
         if ($status === 'failed') {
-            throw new RuntimeException('VNPAY tu choi hoan tien: '.($body['vnp_Message'] ?? $responseCode));
+            throw new RuntimeException('VNPAY từ chối hoàn tiền: '.($body['vnp_Message'] ?? $responseCode));
         }
 
         if ($status === 'refunded') {
@@ -142,6 +144,7 @@ class VnpayRefundService
         return $refund;
     }
 
+    // Thực hiện yêu cầu dữ liệu gửi.
     private function requestPayload(
         Payment $payment,
         float $amount,
@@ -176,6 +179,7 @@ class VnpayRefundService
         return $payload;
     }
 
+    // Thực hiện gốc giao dịch dữ liệu.
     private function originalTransactionData(Payment $payment): array
     {
         $transactions = $payment->transactions->sortByDesc('id');
@@ -185,6 +189,7 @@ class VnpayRefundService
         return array_merge($created?->response_data ?? [], $paid?->response_data ?? []);
     }
 
+    // Thực hiện xác minh phản hồi.
     private function verifyResponse(array $body): bool
     {
         $received = (string) ($body['vnp_SecureHash'] ?? '');
@@ -199,6 +204,7 @@ class VnpayRefundService
         return $received !== '' && hash_equals($received, $calculated);
     }
 
+    // Cập nhật hoàn tiền.
     private function updateRefund(PaymentRefund $refund, array $body, string $status): PaymentRefund
     {
         $refund->fill([
@@ -213,6 +219,7 @@ class VnpayRefundService
         return $refund->fresh() ?? $refund;
     }
 
+    // Thực hiện đồng bộ thanh toán hoàn tiền trạng thái.
     private function syncPaymentRefundStatus(Payment $payment): void
     {
         $refunded = (float) PaymentRefund::query()
@@ -224,17 +231,19 @@ class VnpayRefundService
         $payment->save();
     }
 
+    // Thực hiện cấu hình.
     private function config(string $key, ?string $default = null): string
     {
         $value = trim((string) config("services.vnpay.{$key}", $default));
 
         if ($value === '' && in_array($key, ['tmn_code', 'hash_secret', 'refund_url'], true)) {
-            throw new RuntimeException("Cau hinh VNPAY {$key} chua duoc thiet lap");
+            throw new RuntimeException("Cấu hình VNPAY {$key} chưa được thiết lập");
         }
 
         return $value;
     }
 
+    // Thực hiện vnpay văn bản.
     private function vnpayText(string $value, int $maxLength): string
     {
         $ascii = preg_replace('/[^A-Za-z0-9 ._-]/', '', Str::ascii($value)) ?: 'BStore';

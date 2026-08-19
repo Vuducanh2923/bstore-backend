@@ -30,6 +30,7 @@ class OrderService
 
     private ?bool $ordersHasCreatedAt = null;
 
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(
         private readonly CatalogPricingService $catalogPricingService,
         private readonly OrderDiscountService $discountService,
@@ -40,11 +41,13 @@ class OrderService
         private readonly PaymentStatusClient $paymentStatuses,
     ) {}
 
+    // Lấy toàn bộ dữ liệu.
     public function all(): Collection
     {
         return $this->newestFirst(Order::with(['items', 'discounts']))->get();
     }
 
+    // Lấy danh sách đơn hàng cho trang quản trị.
     public function adminOrders(array $filters = []): LengthAwarePaginator
     {
         $query = Order::query();
@@ -63,11 +66,13 @@ class OrderService
         return $this->newestFirst($query)->paginate($perPage, ['*'], 'page', $page);
     }
 
+    // Lấy dữ liệu dành cho trang quản trị.
     public function findForAdmin(int $orderId): ?Order
     {
         return Order::with('items')->find($orderId);
     }
 
+    // Gán đơn hàng cho nhân viên phụ trách.
     public function assignToStaff(int $orderId, array $actor, ?string $note = null): ?Order
     {
         $order = DB::connection('bstore_order')->transaction(function () use ($orderId, $actor, $note) {
@@ -80,14 +85,14 @@ class OrderService
             $actor = $this->users->actor($actor);
 
             if (! in_array($actor['role'], ['ADMIN', 'STAFF'], true)) {
-                throw new AuthorizationException('Khong co quyen nhan xu ly don hang');
+                throw new AuthorizationException('Không có quyền nhận xử lý đơn hàng');
             }
 
             $currentStatus = $this->normalizeStatus((string) $order->status);
 
             if ($currentStatus !== Order::STATUS_PENDING) {
                 throw ValidationException::withMessages([
-                    'status' => ['Chi co the nhan xu ly don hang dang Pending'],
+                    'status' => ['Chỉ có thể nhận xử lý đơn hàng đang chờ xử lý'],
                 ]);
             }
 
@@ -96,7 +101,7 @@ class OrderService
             $assignedStaffId = (int) ($order->getAttribute('assigned_staff_id') ?? 0);
 
             if ($assignedStaffId > 0 && $assignedStaffId !== (int) $actor['id']) {
-                throw new AuthorizationException('Don hang da co nhan vien khac phu trach');
+                throw new AuthorizationException('Đơn hàng đã có nhân viên khác phụ trách');
             }
 
             $oldStatus = (string) $order->status;
@@ -127,13 +132,14 @@ class OrderService
         return $order;
     }
 
+    // Cập nhật trạng thái.
     public function updateStatus(int $orderId, string $status, ?array $actor = null, ?string $note = null): ?Order
     {
         $status = $this->normalizeStatus($status);
 
         if (! in_array($status, Order::WORKFLOW_STATUSES, true)) {
             throw ValidationException::withMessages([
-                'status' => ['Trang thai don hang khong nam trong luong xu ly'],
+                'status' => ['Trạng thái đơn hàng không nam trong luong xử lý'],
             ]);
         }
 
@@ -149,7 +155,7 @@ class OrderService
 
             if ($currentStatus === Order::STATUS_COMPLETED) {
                 throw ValidationException::withMessages([
-                    'status' => ['Don hang Completed da khoa chinh sua trang thai'],
+                    'status' => ['Đơn hàng đã hoàn tất và bị khóa chỉnh sửa trạng thái'],
                 ]);
             }
 
@@ -159,7 +165,7 @@ class OrderService
 
             if (! $this->isNextWorkflowStatus($currentStatus, $status)) {
                 throw ValidationException::withMessages([
-                    'status' => ['Khong duoc chuyen trang thai don hang nhay buoc hoac quay lui'],
+                    'status' => ['Không được chuyển trạng thái đơn hàng nhảy bước hoặc quay lui'],
                 ]);
             }
 
@@ -204,6 +210,7 @@ class OrderService
         return $order;
     }
 
+    // Cập nhật thanh toán trạng thái.
     public function updatePaymentStatus(int $orderId, array $data): ?Order
     {
         return DB::connection('bstore_order')->transaction(function () use ($orderId, $data) {
@@ -221,7 +228,7 @@ class OrderService
                 && $newPaymentStatus === 'paid'
             ) {
                 throw ValidationException::withMessages([
-                    'payment_status' => ['Khong the xac nhan thanh toan cho don hang da huy'],
+                    'payment_status' => ['Không thể xác nhận thanh toán cho đơn hàng đã hủy'],
                 ]);
             }
 
@@ -258,6 +265,7 @@ class OrderService
         });
     }
 
+    // Cập nhật quản trị thanh toán trạng thái.
     public function updateAdminPaymentStatus(int $orderId, string $newPaymentStatus, array $actor, ?string $note = null): ?Order
     {
         $order = Order::query()->find($orderId);
@@ -275,25 +283,25 @@ class OrderService
 
         if ($oldPaymentStatus === 'paid') {
             throw ValidationException::withMessages([
-                'payment_status' => ['Don hang da thanh toan khong the chuyen ve chua thanh toan.'],
+                'payment_status' => ['Đơn hàng đã thanh toán không thể chuyển về chưa thanh toán.'],
             ]);
         }
 
         if ($this->isCashOnDelivery($order)) {
             if (! in_array($newPaymentStatus, ['unpaid', 'paid'], true)) {
                 throw ValidationException::withMessages([
-                    'payment_status' => ['Don hang COD chi cho phep trang thai unpaid hoac paid.'],
+                    'payment_status' => ['Đơn hàng COD chỉ cho phép trạng thái chưa thanh toán hoặc đã thanh toán.'],
                 ]);
             }
         } elseif ($newPaymentStatus === 'refunded') {
             throw ValidationException::withMessages([
-                'payment_status' => ['Trang thai refunded phai duoc cap nhat boi luong hoan tien.'],
+                'payment_status' => ['Trạng thái refunded phải được cập nhật bởi luồng hoàn tiền.'],
             ]);
         }
 
         if (strtolower((string) $order->status) === Order::STATUS_CANCELLED && $newPaymentStatus === 'paid') {
             throw ValidationException::withMessages([
-                'payment_status' => ['Khong the xac nhan thanh toan cho don hang da huy'],
+                'payment_status' => ['Không thể xác nhận thanh toán cho đơn hàng đã hủy'],
             ]);
         }
 
@@ -307,7 +315,7 @@ class OrderService
             }
 
             if (strtolower((string) $order->payment_status) !== $oldPaymentStatus) {
-                throw new HttpException(409, 'Trang thai thanh toan da duoc cap nhat boi yeu cau khac.');
+                throw new HttpException(409, 'Trạng thái thanh toán đã được cập nhật bởi yêu cầu khác.');
             }
 
             if ($newPaymentStatus === 'paid') {
@@ -343,6 +351,7 @@ class OrderService
         });
     }
 
+    // Thực hiện cho khách hàng.
     public function forCustomer(int $userId): Collection
     {
         return $this->newestFirst(
@@ -350,6 +359,7 @@ class OrderService
         )->get();
     }
 
+    // Thực hiện có phân trang cho khách hàng.
     public function paginatedForCustomer(int $userId, array $filters = []): Paginator
     {
         $query = Order::with('items')->where('user_id', $userId);
@@ -359,6 +369,7 @@ class OrderService
         return $this->newestFirst($query)->simplePaginate($perPage, ['*'], 'page', $page);
     }
 
+    // Lấy cho khách hàng.
     public function findForCustomer(int $userId, int $orderId): ?Order
     {
         return Order::with('items')
@@ -366,6 +377,7 @@ class OrderService
             ->find($orderId);
     }
 
+    // Thực hiện thanh toán context.
     public function paymentContext(int $orderId, ?int $customerId = null): ?array
     {
         $order = Order::query()->find($orderId);
@@ -399,6 +411,7 @@ class OrderService
         ];
     }
 
+    // Thực hiện yêu cầu hủy.
     public function requestCancel(int $customerId, int $orderId, string $reason): ?Order
     {
         $order = DB::connection('bstore_order')->transaction(function () use ($customerId, $orderId, $reason) {
@@ -415,13 +428,13 @@ class OrderService
 
             if (! in_array($currentStatus, [Order::STATUS_PENDING, Order::STATUS_PROCESSING], true)) {
                 throw ValidationException::withMessages([
-                    'status' => ['Khach hang chi duoc huy don o trang thai Pending hoac Processing'],
+                    'status' => ['Khách hàng chỉ được hủy đơn ở trạng thái Pending hoặc Processing'],
                 ]);
             }
 
             if ($order->cancel_request_status === Order::CANCEL_REQUEST_PENDING) {
                 throw ValidationException::withMessages([
-                    'cancel_request_status' => ['Yeu cau huy don dang cho duyet'],
+                    'cancel_request_status' => ['Yêu cầu hủy đơn đang chờ duyệt'],
                 ]);
             }
 
@@ -456,6 +469,7 @@ class OrderService
         return $order;
     }
 
+    // Cập nhật hủy.
     public function approveCancel(int $orderId, array $actor, ?string $note = null): ?Order
     {
         $refundCreated = null;
@@ -469,7 +483,7 @@ class OrderService
 
             if ($order->cancel_request_status !== Order::CANCEL_REQUEST_PENDING) {
                 throw ValidationException::withMessages([
-                    'cancel_request_status' => ['Don hang khong co yeu cau huy dang cho duyet'],
+                    'cancel_request_status' => ['Đơn hàng không có yêu cầu hủy đang chờ duyệt'],
                 ]);
             }
 
@@ -510,7 +524,7 @@ class OrderService
                     userId: (int) $order->user_id,
                     orderId: (int) $order->id,
                     type: 'refund_created',
-                    message: 'Yeu cau hoan tien da duoc tao tu dong cho don hang da huy.',
+                    message: 'Yêu cầu hoàn tiền đã được tạo tự động cho đơn hàng đã hủy.',
                     data: ['refund_id' => $refundCreated->id],
                 );
             }
@@ -519,6 +533,7 @@ class OrderService
         return $order;
     }
 
+    // Cập nhật hủy.
     public function rejectCancel(int $orderId, array $actor, ?string $note = null): ?Order
     {
         $order = DB::connection('bstore_order')->transaction(function () use ($orderId, $actor, $note) {
@@ -530,7 +545,7 @@ class OrderService
 
             if ($order->cancel_request_status !== Order::CANCEL_REQUEST_PENDING) {
                 throw ValidationException::withMessages([
-                    'cancel_request_status' => ['Don hang khong co yeu cau huy dang cho duyet'],
+                    'cancel_request_status' => ['Đơn hàng không có yêu cầu hủy đang chờ duyệt'],
                 ]);
             }
 
@@ -558,7 +573,7 @@ class OrderService
                 userId: (int) $order->user_id,
                 orderId: (int) $order->id,
                 type: 'cancel_rejected',
-                message: 'Yeu cau huy don da bi tu choi.',
+                message: 'Yêu cầu hủy đơn đã bị từ chối.',
                 data: ['status' => $order->status],
             );
         }
@@ -566,6 +581,7 @@ class OrderService
         return $order;
     }
 
+    // Thực hiện yêu cầu trả về.
     public function requestReturn(int $customerId, int $orderId, string $reason): ?Order
     {
         return DB::connection('bstore_order')->transaction(function () use ($customerId, $orderId, $reason) {
@@ -575,10 +591,10 @@ class OrderService
                 return null;
             }
             if ($order->status !== Order::STATUS_DELIVERED) {
-                throw ValidationException::withMessages(['status' => ['Chi duoc yeu cau tra hang sau khi da giao hang']]);
+                throw ValidationException::withMessages(['status' => ['Chỉ được yêu cầu trả hàng sau khi đã giao hàng']]);
             }
             if (! in_array($order->return_status, [Order::RETURN_NONE, Order::RETURN_REJECTED], true)) {
-                throw ValidationException::withMessages(['return_status' => ['Yeu cau tra hang da ton tai']]);
+                throw ValidationException::withMessages(['return_status' => ['Yêu cầu trả hàng đã tồn tại']]);
             }
 
             $order->return_status = Order::RETURN_PENDING;
@@ -590,6 +606,7 @@ class OrderService
         });
     }
 
+    // Cập nhật trả về trạng thái.
     public function updateReturnStatus(int $orderId, string $nextStatus, array $actor, ?string $note = null): ?Order
     {
         return DB::connection('bstore_order')->transaction(function () use ($orderId, $nextStatus, $actor, $note) {
@@ -606,7 +623,7 @@ class OrderService
             ];
 
             if (! in_array($nextStatus, $transitions[$order->return_status] ?? [], true)) {
-                throw ValidationException::withMessages(['return_status' => ['Chuyen trang thai tra hang khong hop le']]);
+                throw ValidationException::withMessages(['return_status' => ['Chuyển trạng thái trả hàng không hợp lệ']]);
             }
 
             $actor = $this->users->actor($actor);
@@ -629,6 +646,7 @@ class OrderService
         });
     }
 
+    // Tạo hoặc lưu dữ liệu theo nghiệp vụ của hàm.
     public function create(array $data): Order
     {
         $items = $this->catalogPricingService->resolveOrderItems($data['items'] ?? []);
@@ -652,7 +670,7 @@ class OrderService
 
                 if ($paymentMethod === 'vnpay' && $finalAmount < 1000) {
                     throw ValidationException::withMessages([
-                        'final_amount' => ['Don hang thanh toan VNPAY phai co tong tien lon hon hoac bang 1000'],
+                        'final_amount' => ['Đơn hàng thanh toán VNPAY phải có tổng tiền lớn hơn hoặc bằng 1000'],
                     ]);
                 }
 
@@ -710,6 +728,7 @@ class OrderService
         return $order;
     }
 
+    // Thực hiện chuyển thành chuỗi quản trị đơn hàng.
     public function serializeAdminOrder(Order $order, bool $withItems = true): array
     {
         if ($withItems) {
@@ -756,6 +775,7 @@ class OrderService
         return $data;
     }
 
+    // Thực hiện chuyển thành chuỗi quản trị đơn hàng.
     public function serializeAdminOrders(iterable $orders, bool $withItems = false): array
     {
         return collect($orders)
@@ -764,6 +784,7 @@ class OrderService
             ->all();
     }
 
+    // Thực hiện chuyển thành chuỗi đơn hàng.
     public function serializeOrder(Order $order, bool $withItems = true): array
     {
         $data = [
@@ -804,6 +825,7 @@ class OrderService
         return $data;
     }
 
+    // Thực hiện chuyển thành chuỗi đơn hàng.
     public function serializeOrders(iterable $orders, bool $withItems = true): array
     {
         return collect($orders)
@@ -812,6 +834,7 @@ class OrderService
             ->all();
     }
 
+    // Chuẩn hóa trạng thái.
     public function normalizeStatus(string $status): string
     {
         $value = Str::snake(trim($status));
@@ -823,6 +846,7 @@ class OrderService
         ][$value] ?? $value;
     }
 
+    // Kiểm tra next quy trình trạng thái.
     private function isNextWorkflowStatus(string $currentStatus, string $nextStatus): bool
     {
         $currentIndex = array_search($this->normalizeStatus($currentStatus), Order::WORKFLOW_STATUSES, true);
@@ -833,6 +857,7 @@ class OrderService
             && $nextIndex === $currentIndex + 1;
     }
 
+    // Kiểm tra can handle đơn hàng.
     private function ensureCanHandleOrder(Order $order, ?array $actor, bool $allowUnassignedStaff = false): void
     {
         if (! $actor) {
@@ -844,20 +869,21 @@ class OrderService
         }
 
         if (($actor['role'] ?? null) !== 'STAFF') {
-            throw new AuthorizationException('Khong co quyen xu ly don hang');
+            throw new AuthorizationException('Không có quyền xử lý đơn hàng');
         }
 
         $assignedStaffId = (int) ($order->getAttribute('assigned_staff_id') ?? 0);
 
         if ($assignedStaffId > 0 && $assignedStaffId !== (int) $actor['id']) {
-            throw new AuthorizationException('Don hang da co nhan vien khac phu trach');
+            throw new AuthorizationException('Đơn hàng đã có nhân viên khác phụ trách');
         }
 
         if ($assignedStaffId === 0 && ! $allowUnassignedStaff) {
-            throw new AuthorizationException('Nhan vien can nhan xu ly don hang truoc khi thao tac');
+            throw new AuthorizationException('Nhân viên cần nhận xử lý đơn hàng trước khi thao tác');
         }
     }
 
+    // Kiểm tra thanh toán allows đang xử lý.
     private function ensurePaymentAllowsProcessing(Order $order): void
     {
         if ($this->isCashOnDelivery($order)) {
@@ -866,11 +892,12 @@ class OrderService
 
         if (strtolower((string) $order->payment_status) !== 'paid') {
             throw ValidationException::withMessages([
-                'payment_status' => ['Don thanh toan online phai duoc thanh toan truoc khi xu ly'],
+                'payment_status' => ['Don thanh toán trực tuyến phải được thanh toán trước khi xử lý'],
             ]);
         }
     }
 
+    // Kiểm tra thanh toán chuyển trạng thái.
     private function ensurePaymentTransition(string $current, string $next): void
     {
         if ($current === $next) {
@@ -887,11 +914,12 @@ class OrderService
 
         if (! in_array($next, $allowed[$current] ?? [], true)) {
             throw ValidationException::withMessages([
-                'payment_status' => ["Khong the chuyen trang thai thanh toan tu {$current} sang {$next}"],
+                'payment_status' => ["Không thể chuyen trạng thái thanh toán tu {$current} sang {$next}"],
             ]);
         }
     }
 
+    // Thực hiện commit tồn kho.
     private function commitInventory(Order $order): void
     {
         if (! $this->orderColumnExists('inventory_reference') || ! $this->orderColumnExists('inventory_state')) {
@@ -907,7 +935,7 @@ class OrderService
 
         if ($state !== Order::INVENTORY_RESERVED) {
             throw ValidationException::withMessages([
-                'inventory' => ["Khong the commit ton kho o trang thai {$state}"],
+                'inventory' => ["Không thể commit tồn kho ở trạng thái {$state}"],
             ]);
         }
 
@@ -916,6 +944,7 @@ class OrderService
         $this->setOrderColumn($order, 'inventory_updated_at', now());
     }
 
+    // Thực hiện reverse tồn kho cho cancellation.
     private function reverseInventoryForCancellation(Order $order): void
     {
         if (! $this->orderColumnExists('inventory_reference') || ! $this->orderColumnExists('inventory_state')) {
@@ -937,13 +966,14 @@ class OrderService
             $order->setAttribute('inventory_state', Order::INVENTORY_RESTORED);
         } else {
             throw ValidationException::withMessages([
-                'inventory' => ["Khong the hoan ton kho o trang thai {$state}"],
+                'inventory' => ["Không thể hoàn tồn kho ở trạng thái {$state}"],
             ]);
         }
 
         $this->setOrderColumn($order, 'inventory_updated_at', now());
     }
 
+    // Kiểm tra cash on delivery.
     private function isCashOnDelivery(Order $order): bool
     {
         return in_array(strtolower((string) $order->getAttribute('payment_method')), [
@@ -953,6 +983,7 @@ class OrderService
         ], true);
     }
 
+    // Thực hiện shipping fee.
     private function shippingFee(float $subtotal): float
     {
         $flatFee = max((float) config('order.shipping.flat_fee', 30000), 0);
@@ -961,6 +992,7 @@ class OrderService
         return $freeThreshold > 0 && $subtotal >= $freeThreshold ? 0.0 : $flatFee;
     }
 
+    // Thực hiện đang hoạt động giỏ hàng id.
     private function activeCartId(int $userId): ?int
     {
         if (! $this->orderTableExists('carts')) {
@@ -978,6 +1010,7 @@ class OrderService
         return $id !== null ? (int) $id : null;
     }
 
+    // Cập nhật đơn hàng cột.
     private function setOrderColumn(Order $order, string $column, mixed $value): void
     {
         if ($this->orderColumnExists($column)) {
@@ -985,11 +1018,13 @@ class OrderService
         }
     }
 
+    // Thực hiện đơn hàng cột tồn tại.
     private function orderColumnExists(string $column): bool
     {
         return in_array($column, $this->tableColumns('orders'), true);
     }
 
+    // Kiểm tra online paid.
     private function isOnlinePaid(Order $order): bool
     {
         if ($order->payment_status !== 'paid') {
@@ -1002,6 +1037,7 @@ class OrderService
             && ! in_array($paymentMethod, ['cod', 'cash', 'cash_on_delivery'], true);
     }
 
+    // Tạo hoặc lưu hoàn tiền cho cancelled đơn hàng.
     private function createRefundForCancelledOrder(Order $order, ?string $note = null): ?RefundRequest
     {
         if (! $this->orderTableExists('refund_requests')) {
@@ -1025,7 +1061,7 @@ class OrderService
         $refund = RefundRequest::create([
             'order_id' => $order->id,
             'customer_id' => $order->user_id,
-            'reason' => trim('Hoan tien do huy don. '.$order->cancel_reason),
+            'reason' => trim('Hoàn tiền do hủy đơn. '.$order->cancel_reason),
             'amount' => $order->final_amount ?? 0,
             'status' => RefundRequest::STATUS_PENDING,
             'admin_note' => $note,
@@ -1043,11 +1079,13 @@ class OrderService
         return $refund;
     }
 
+    // Thực hiện subtotal.
     private function subtotal(array $item): float
     {
         return (float) ($item['price'] ?? 0) * (int) ($item['quantity'] ?? 1);
     }
 
+    // Thực hiện đơn hàng subtotal.
     private function orderSubtotal(Order $order): float
     {
         if ($order->total_amount !== null) {
@@ -1057,6 +1095,7 @@ class OrderService
         return (float) $order->items->sum(fn (OrderItem $item) => (float) ($item->subtotal ?? 0));
     }
 
+    // Thực hiện đơn hàng total.
     private function orderTotal(Order $order): float
     {
         if ($order->final_amount !== null) {
@@ -1071,6 +1110,7 @@ class OrderService
         );
     }
 
+    // Thực hiện chuyển thành chuỗi quản trị đơn hàng mặt hàng.
     private function serializeAdminOrderItem(OrderItem $item, $snapshots): array
     {
         $snapshot = $snapshots->get((int) $item->product_variant_id, []);
@@ -1088,6 +1128,7 @@ class OrderService
         ];
     }
 
+    // Thực hiện danh mục sản phẩm snapshots cho mặt hàng.
     private function catalogSnapshotsForItems(iterable $items)
     {
         $variantIds = collect($items)
@@ -1160,11 +1201,13 @@ class OrderService
         }
     }
 
+    // Thực hiện money.
     private function money(mixed $value): string
     {
         return number_format((float) ($value ?? 0), 2, '.', '');
     }
 
+    // Thực hiện dữ liệu gửi cho bảng.
     private function payloadForTable(array $data, string $table): array
     {
         $columns = $this->tableColumns($table);
@@ -1176,6 +1219,7 @@ class OrderService
         return array_intersect_key($data, array_flip($columns));
     }
 
+    // Thực hiện bảng columns.
     private function tableColumns(string $table): array
     {
         if (array_key_exists($table, $this->tableColumns)) {
@@ -1193,6 +1237,7 @@ class OrderService
         }
     }
 
+    // Thực hiện đơn hàng bảng tồn tại.
     private function orderTableExists(string $table): bool
     {
         try {
@@ -1204,6 +1249,7 @@ class OrderService
         }
     }
 
+    // Thực hiện danh mục sản phẩm bảng tồn tại.
     private function catalogTableExists(string $table): bool
     {
         if (array_key_exists($table, $this->catalogTableExists)) {
@@ -1219,11 +1265,13 @@ class OrderService
         }
     }
 
+    // Thực hiện đơn hàng mã.
     private function orderCode(): string
     {
         return 'ORD'.now()->format('YmdHis').Str::upper(Str::random(4));
     }
 
+    // Thực hiện newest đầu tiên.
     private function newestFirst($query)
     {
         $this->ordersHasCreatedAt ??= Schema::connection('bstore_order')->hasColumn('orders', 'created_at');
@@ -1235,6 +1283,7 @@ class OrderService
         return $query->orderByDesc('id');
     }
 
+    // Thực hiện per trang.
     private function perPage(array $filters): int
     {
         return min(

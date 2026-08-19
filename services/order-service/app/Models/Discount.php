@@ -52,6 +52,7 @@ class Discount extends Model
         'end_date' => 'datetime',
     ];
 
+    // Thực hiện đơn hàng discounts.
     public function orderDiscounts()
     {
         return $this->hasMany(OrderDiscount::class);

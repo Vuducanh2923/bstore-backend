@@ -250,7 +250,7 @@ test('inventory is reserved committed and restored across cod lifecycle', functi
     ], 'bstore_order');
 
     $this->withToken(customerAccessToken(10))->postJson("/api/customer/orders/{$orderId}/cancel", [
-        'reason' => 'Khong con nhu cau',
+        'reason' => 'Không con nhu cau',
     ])->assertOk();
     $this->assertDatabaseHas('orders', [
         'id' => $orderId,
@@ -301,6 +301,7 @@ test('online payment commits inventory but leaves order pending for staff assign
     ], 'bstore_order');
 });
 
+// Thực hiện valid đơn hàng dữ liệu gửi.
 function validOrderPayload(): array
 {
     return [

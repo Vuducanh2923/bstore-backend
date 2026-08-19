@@ -15,6 +15,8 @@ use Illuminate\Validation\Rule;
 
 class InventoryController extends Controller
 {
+
+    // Lấy toàn bộ dữ liệu.
     public function index(Request $request): JsonResponse
     {
         $perPage = min(100, max(1, (int) $request->query('per_page', $request->query('limit', 25))));
@@ -47,6 +49,7 @@ class InventoryController extends Controller
         ]);
     }
 
+    // Lấy toàn bộ dữ liệu.
     public function show(int $id): JsonResponse
     {
         $inventory = Inventory::query()->with('variant.product')->find($id);
@@ -56,6 +59,7 @@ class InventoryController extends Controller
             : $this->notFound();
     }
 
+    // Tạo hoặc lưu dữ liệu theo nghiệp vụ của hàm.
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -69,7 +73,7 @@ class InventoryController extends Controller
         if (! $variant) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay bien the san pham',
+                'message' => 'Không tìm thấy biến thể sản phẩm',
                 'data' => null,
             ], 422);
         }
@@ -77,7 +81,7 @@ class InventoryController extends Controller
         if (Inventory::where('product_variant_id', $variant->id)->exists()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Ton kho cua bien the da ton tai',
+                'message' => 'Tồn kho của biến thể đã tồn tại',
                 'data' => null,
             ], 409);
         }
@@ -90,11 +94,12 @@ class InventoryController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Tao ton kho thanh cong',
+            'message' => 'Tạo tồn kho thành công',
             'data' => $inventory->fresh('variant.product'),
         ], 201);
     }
 
+    // Cập nhật dữ liệu theo nghiệp vụ của hàm.
     public function update(Request $request, int $id): JsonResponse
     {
         $data = $request->validate([
@@ -116,7 +121,7 @@ class InventoryController extends Controller
             ) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Khong the thay doi bien the cua ban ghi ton kho',
+                    'message' => 'Không thể thay đổi biến thể của bản ghi tồn kho',
                     'data' => null,
                 ], 422);
             }
@@ -127,7 +132,7 @@ class InventoryController extends Controller
             ) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'reserved_quantity chi duoc thay doi boi inventory reservation',
+                    'message' => 'Số lượng đã giữ chỉ được thay đổi bởi thao tác giữ tồn kho',
                     'data' => null,
                 ], 422);
             }
@@ -139,7 +144,7 @@ class InventoryController extends Controller
             if ($quantity < (int) $inventory->reserved_quantity) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'So luong ton kho khong duoc nho hon so luong da giu',
+                    'message' => 'Số lượng tồn kho không được nhỏ hơn số lượng đã giữ',
                     'data' => null,
                 ], 422);
             }
@@ -149,12 +154,13 @@ class InventoryController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Cap nhat ton kho thanh cong',
+                'message' => 'Cập nhật tồn kho thành công',
                 'data' => $inventory->fresh('variant.product'),
             ]);
         }, 3);
     }
 
+    // Xóa hoặc hủy dữ liệu theo nghiệp vụ của hàm.
     public function destroy(int $id): JsonResponse
     {
         return DB::connection('bstore_catalog')->transaction(function () use ($id): JsonResponse {
@@ -174,7 +180,7 @@ class InventoryController extends Controller
             if ((int) $inventory->reserved_quantity > 0 || $hasReservations || $hasTransactions) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Khong the xoa ton kho da phat sinh giao dich',
+                    'message' => 'Không thể xóa tồn kho đã phát sinh giao dịch',
                     'data' => null,
                 ], 409);
             }
@@ -183,16 +189,17 @@ class InventoryController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Xoa ton kho thanh cong',
+                'message' => 'Xóa tồn kho thành công',
             ]);
         }, 3);
     }
 
+    // Thực hiện not found.
     private function notFound(): JsonResponse
     {
         return response()->json([
             'success' => false,
-            'message' => 'Khong tim thay ton kho',
+            'message' => 'Không tìm thấy tồn kho',
             'data' => null,
         ], 404);
     }

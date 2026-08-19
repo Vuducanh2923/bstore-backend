@@ -8,6 +8,8 @@ use Illuminate\Http\JsonResponse;
 
 class InternalUserController extends Controller
 {
+
+    // Lấy toàn bộ dữ liệu.
     public function show(int|string $id): JsonResponse
     {
         $user = User::query()->with('role:id,name')->find((int) $id);
@@ -15,14 +17,14 @@ class InternalUserController extends Controller
         if (! $user) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay nguoi dung',
+                'message' => 'Không tìm thấy người dùng',
                 'data' => null,
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Lay thong tin nguoi dung thanh cong',
+            'message' => 'Lấy thông tin người dùng thành công',
             'data' => [
                 'id' => (int) $user->id,
                 'name' => (string) $user->full_name,

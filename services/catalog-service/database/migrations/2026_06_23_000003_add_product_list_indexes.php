@@ -15,6 +15,7 @@ return new class extends Migration
         'idx_products_created_at' => 'created_at',
     ];
 
+    // Áp dụng thay đổi cấu trúc cơ sở dữ liệu.
     public function up(): void
     {
         if (! Schema::connection('bstore_catalog')->hasTable('products')) {
@@ -32,6 +33,7 @@ return new class extends Migration
         }
     }
 
+    // Hoàn tác thay đổi cấu trúc cơ sở dữ liệu.
     public function down(): void
     {
         if (! Schema::connection('bstore_catalog')->hasTable('products')) {
@@ -46,6 +48,7 @@ return new class extends Migration
         }
     }
 
+    // Thực hiện cột has chỉ mục.
     private function columnHasIndex(string $column): bool
     {
         return DB::connection('bstore_catalog')
@@ -57,6 +60,7 @@ return new class extends Migration
             ->exists();
     }
 
+    // Lấy tồn tại.
     private function indexExists(string $indexName): bool
     {
         return DB::connection('bstore_catalog')

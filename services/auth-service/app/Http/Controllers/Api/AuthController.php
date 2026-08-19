@@ -22,19 +22,23 @@ use Throwable;
 
 class AuthController extends Controller
 {
+
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(private readonly AuthService $authService) {}
 
+    // Tạo hoặc lưu dữ liệu theo nghiệp vụ của hàm.
     public function register(RegisterRequest $request): JsonResponse
     {
         $user = $this->authService->register($request->validated());
 
         return response()->json([
             'success' => true,
-            'message' => 'Dang ky thanh cong. Vui long kiem tra email de nhap ma OTP xac thuc.',
+            'message' => 'Đăng ký thành công. Vui lòng kiểm tra email để nhập mã OTP xác thực.',
             'data' => $user,
         ], 201);
     }
 
+    // Thực hiện đăng nhập.
     public function login(LoginRequest $request): JsonResponse
     {
         $data = $request->validated();
@@ -43,7 +47,7 @@ class AuthController extends Controller
         if ($result['status'] === 'password_reset_required') {
             return response()->json([
                 'success' => false,
-                'message' => 'Tai khoan su dung mat khau cu. Vui long dat lai mat khau.',
+                'message' => 'Tài khoản sử dụng mật khẩu cũ. Vui lòng đặt lại mật khẩu.',
                 'data' => null,
             ], 403);
         }
@@ -51,7 +55,7 @@ class AuthController extends Controller
         if ($result['status'] === 'email_unverified') {
             return response()->json([
                 'success' => false,
-                'message' => 'Vui long xac thuc email truoc khi dang nhap',
+                'message' => 'Vui lòng xác thực email trước khi đăng nhập',
                 'data' => null,
             ], 403);
         }
@@ -59,7 +63,7 @@ class AuthController extends Controller
         if ($result['status'] === 'inactive') {
             return response()->json([
                 'success' => false,
-                'message' => 'Tai khoan da bi vo hieu hoa',
+                'message' => 'Tài khoản đã bị vô hiệu hóa',
                 'data' => null,
             ], 403);
         }
@@ -67,18 +71,19 @@ class AuthController extends Controller
         if (! $result['user']) {
             return response()->json([
                 'success' => false,
-                'message' => 'Email hoac mat khau khong dung',
+                'message' => 'Email hoặc mật khẩu không đúng',
                 'data' => null,
             ], 401);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Dang nhap thanh cong',
+            'message' => 'Đăng nhập thành công',
             'data' => $result['user'],
         ]);
     }
 
+    // Làm mới hoặc đặt lại dữ liệu theo nghiệp vụ của hàm.
     public function refresh(RefreshTokenRequest $request): JsonResponse
     {
         $result = $this->authService->refresh($request->validated('refresh_token'));
@@ -86,7 +91,7 @@ class AuthController extends Controller
         if ($result['status'] === 'inactive') {
             return response()->json([
                 'success' => false,
-                'message' => 'Tai khoan da bi vo hieu hoa',
+                'message' => 'Tài khoản đã bị vô hiệu hóa',
                 'data' => null,
             ], 403);
         }
@@ -94,18 +99,19 @@ class AuthController extends Controller
         if (! $result['user']) {
             return response()->json([
                 'success' => false,
-                'message' => 'Refresh token khong hop le hoac da het han',
+                'message' => 'Refresh token không hợp lệ hoặc đã hết hạn',
                 'data' => null,
             ], 401);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Lam moi phien dang nhap thanh cong',
+            'message' => 'Làm mới phiên đăng nhập thành công',
             'data' => $result['user'],
         ]);
     }
 
+    // Thực hiện đăng xuất.
     public function logout(LogoutRequest $request): JsonResponse
     {
         $revoked = $this->authService->logout(
@@ -116,18 +122,19 @@ class AuthController extends Controller
         if (! $revoked) {
             return response()->json([
                 'success' => false,
-                'message' => 'Phien dang nhap khong hop le hoac da bi thu hoi',
+                'message' => 'Phiên đăng nhập không hợp lệ hoặc đã bị thu hồi',
                 'data' => null,
             ], 401);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Dang xuat thanh cong',
+            'message' => 'Đăng xuất thành công',
             'data' => null,
         ]);
     }
 
+    // Thực hiện xác minh đăng ký otp.
     public function verifyRegisterOtp(VerifyRegisterOtpRequest $request): JsonResponse
     {
         $data = $request->validated();
@@ -143,11 +150,12 @@ class AuthController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Xac thuc email thanh cong',
+            'message' => 'Xác thực email thành công',
             'data' => $result['user'],
         ]);
     }
 
+    // Thực hiện resend đăng ký otp.
     public function resendRegisterOtp(ResendRegisterOtpRequest $request): JsonResponse
     {
         $status = $this->authService->resendRegisterOtp($request->validated('email'), $request->ip());
@@ -158,19 +166,20 @@ class AuthController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Neu email hop le, ma OTP moi da duoc gui.',
+            'message' => 'Nếu email hợp lệ, mã OTP mới đã được gửi.',
             'data' => null,
         ]);
     }
 
+    // Thực hiện forgot mật khẩu.
     public function forgotPassword(ForgotPasswordRequest $request): JsonResponse
     {
         try {
             $status = $this->authService->requestForgotPasswordOtp($request->validated('email'), $request->ip());
         } catch (Throwable $exception) {
             $message = app()->environment('local')
-                ? 'Khong gui duoc email OTP: '.$exception->getMessage()
-                : 'Khong gui duoc email OTP. Vui long thu lai sau.';
+                ? 'Không gửi được email OTP: '.$exception->getMessage()
+                : 'Không gửi được email OTP. Vui lòng thử lại sau.';
 
             return response()->json([
                 'success' => false,
@@ -186,18 +195,19 @@ class AuthController extends Controller
         if ($status === EmailVerificationService::STATUS_EMAIL_NOT_FOUND) {
             return response()->json([
                 'success' => true,
-                'message' => 'Neu email hop le, ma OTP dat lai mat khau da duoc gui.',
+                'message' => 'Nếu email hợp lệ, mã OTP đặt lại mật khẩu đã được gửi.',
                 'data' => null,
             ]);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Neu email hop le, ma OTP dat lai mat khau da duoc gui.',
+            'message' => 'Nếu email hợp lệ, mã OTP đặt lại mật khẩu đã được gửi.',
             'data' => null,
         ]);
     }
 
+    // Thực hiện debug send mail.
     public function debugSendMail(Request $request): JsonResponse
     {
         if (! app()->environment('local')) {
@@ -213,7 +223,7 @@ class AuthController extends Controller
         Log::info('Sending debug email', ['email' => $email]);
 
         try {
-            Mail::raw('Email test SMTP tu BStore Auth Service.', function ($message) use ($email) {
+            Mail::raw('Email kiểm thử SMTP từ Dịch vụ xác thực BStore.', function ($message) use ($email) {
                 $message->to($email)->subject('BStore SMTP test');
             });
 
@@ -227,18 +237,19 @@ class AuthController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Khong gui duoc email test: '.$exception->getMessage(),
+                'message' => 'Không gửi được email kiểm thử: '.$exception->getMessage(),
                 'data' => null,
             ], 500);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Email test da duoc gui',
+            'message' => 'Email kiểm thử đã được gửi',
             'data' => null,
         ]);
     }
 
+    // Thực hiện xác minh forgot mật khẩu otp.
     public function verifyForgotPasswordOtp(VerifyForgotPasswordOtpRequest $request): JsonResponse
     {
         $data = $request->validated();
@@ -254,11 +265,12 @@ class AuthController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Xac thuc OTP thanh cong',
+            'message' => 'Xác thực OTP thành công',
             'data' => null,
         ]);
     }
 
+    // Làm mới hoặc đặt lại mật khẩu.
     public function resetPassword(ResetPasswordRequest $request): JsonResponse
     {
         $data = $request->validated();
@@ -274,25 +286,27 @@ class AuthController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Dat lai mat khau thanh cong',
+            'message' => 'Đặt lại mật khẩu thành công',
             'data' => null,
         ]);
     }
 
+    // Thực hiện invalid otp phản hồi.
     private function invalidOtpResponse(): JsonResponse
     {
         return response()->json([
             'success' => false,
-            'message' => 'Ma OTP khong hop le hoac da het han',
+            'message' => 'Mã OTP không hợp lệ hoặc đã hết hạn',
             'data' => null,
         ], 422);
     }
 
+    // Thực hiện too many otp attempts phản hồi.
     private function tooManyOtpAttemptsResponse(): JsonResponse
     {
         return response()->json([
             'success' => false,
-            'message' => 'Ban thao tac qua nhanh. Vui long thu lai sau.',
+            'message' => 'Ban thao tác qua nhanh. Vui lòng thu lai sau.',
             'data' => null,
         ], 429);
     }

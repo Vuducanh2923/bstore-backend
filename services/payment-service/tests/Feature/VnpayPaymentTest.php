@@ -89,7 +89,7 @@ test('VNPAY URL uses the order amount and owner supplied by Order Service', func
     $response = $this->withToken(paymentAccessToken(7))->postJson('/api/payments/vnpay/create', [
         'order_id' => 123,
         'amount' => 1,
-        'order_info' => 'Thanh toan don 123',
+        'order_info' => 'Thanh toán đơn 123',
     ]);
 
     $response->assertCreated()->assertJsonPath('data.order_id', 123)->assertJsonPath('data.amount', '90000.00');
@@ -97,7 +97,7 @@ test('VNPAY URL uses the order amount and owner supplied by Order Service', func
 
     expect($query['vnp_Amount'])->toBe('9000000')
         ->and($query['vnp_TmnCode'])->toBe('TESTTMN')
-        ->and($query['vnp_OrderInfo'])->toBe('Thanh toan don 123')
+        ->and($query['vnp_OrderInfo'])->toBe('Thanh toán đơn 123')
         ->and($query['vnp_CreateDate'])->toBe('20260713103040')
         ->and($query['vnp_SecureHash'])->toBe(paymentVnpayHash($query));
 
@@ -108,10 +108,10 @@ test('VNPAY URL uses the order amount and owner supplied by Order Service', func
 test('customer authentication and authoritative order context are mandatory', function () {
     $this->postJson('/api/payments/vnpay/create', ['order_id' => 123])->assertUnauthorized();
 
-    Http::fake(['http://order.test/*' => Http::response(['success' => false, 'message' => 'Khong thuoc customer'], 403)]);
+    Http::fake(['http://order.test/*' => Http::response(['success' => false, 'message' => 'Không thuộc khách hàng'], 403)]);
     $this->withToken(paymentAccessToken(7))->postJson('/api/payments/vnpay/create', ['order_id' => 123])
         ->assertUnprocessable()
-        ->assertJsonPath('message', 'Khong thuoc customer');
+        ->assertJsonPath('message', 'Không thuộc khách hàng');
 
     expect(DB::connection('bstore_payment')->table('payments')->count())->toBe(0);
 });
@@ -211,7 +211,7 @@ test('internal refund calls signed VNPAY refund once and updates payment', funct
             'vnp_ResponseId' => 'RESP01',
             'vnp_Command' => 'refund',
             'vnp_ResponseCode' => '00',
-            'vnp_Message' => 'Success',
+            'vnp_Message' => 'Thành công.',
             'vnp_TmnCode' => 'TESTTMN',
             'vnp_TxnRef' => $requestData['vnp_TxnRef'],
             'vnp_Amount' => $requestData['vnp_Amount'],
@@ -249,6 +249,7 @@ test('internal refund calls signed VNPAY refund once and updates payment', funct
     });
 });
 
+// Thực hiện thanh toán fake đơn hàng context.
 function paymentFakeOrderContext(int $orderId, int $customerId, int $amount, string $method): void
 {
     Http::fake([
@@ -266,6 +267,7 @@ function paymentFakeOrderContext(int $orderId, int $customerId, int $amount, str
     ]);
 }
 
+// Thực hiện thanh toán access token.
 function paymentAccessToken(int $userId, string $role = 'CUSTOMER'): string
 {
     $now = Carbon::now()->timestamp;
@@ -279,11 +281,13 @@ function paymentAccessToken(int $userId, string $role = 'CUSTOMER'): string
     return "{$header}.{$payload}.{$signature}";
 }
 
+// Thực hiện thanh toán base64 url.
 function paymentBase64Url(string $value): string
 {
     return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
 }
 
+// Thực hiện thanh toán tạo vnpay thanh toán.
 function paymentCreateVnpayPayment(string $txnRef, int $amount, string $status = 'pending'): int
 {
     return DB::connection('bstore_payment')->table('payments')->insertGetId([
@@ -293,6 +297,7 @@ function paymentCreateVnpayPayment(string $txnRef, int $amount, string $status =
     ]);
 }
 
+// Thực hiện thanh toán tạo paid vnpay thanh toán.
 function paymentCreatePaidVnpayPayment(string $txnRef, int $amount, string $transactionNo): int
 {
     $id = paymentCreateVnpayPayment($txnRef, $amount, 'paid');
@@ -304,6 +309,7 @@ function paymentCreatePaidVnpayPayment(string $txnRef, int $amount, string $tran
     return $id;
 }
 
+// Thực hiện thanh toán signed callback.
 function paymentSignedCallback(string $txnRef, int $amount, string $transactionNo): array
 {
     $payload = [
@@ -315,6 +321,7 @@ function paymentSignedCallback(string $txnRef, int $amount, string $transactionN
     return $payload;
 }
 
+// Thực hiện thanh toán vnpay mã băm.
 function paymentVnpayHash(array $payload): string
 {
     unset($payload['vnp_SecureHash'], $payload['vnp_SecureHashType']);
@@ -324,6 +331,7 @@ function paymentVnpayHash(array $payload): string
     return hash_hmac('sha512', $data, 'test-secret');
 }
 
+// Thực hiện thanh toán hoàn tiền phản hồi mã băm.
 function paymentRefundResponseHash(array $body): string
 {
     $fields = [

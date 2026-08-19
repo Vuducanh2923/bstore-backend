@@ -17,6 +17,7 @@ class ProductDescriptionSanitizer
         'script', 'iframe', 'style', 'object', 'embed', 'svg', 'form',
     ];
 
+    // Thực hiện sanitize.
     public function sanitize(?string $html): ?string
     {
         if ($html === null || $html === '') {
@@ -47,6 +48,7 @@ class ProductDescriptionSanitizer
         return $sanitized;
     }
 
+    // Thực hiện sanitize children.
     private function sanitizeChildren(DOMNode $parent): void
     {
         for ($node = $parent->firstChild; $node !== null;) {
@@ -81,6 +83,7 @@ class ProductDescriptionSanitizer
         }
     }
 
+    // Thực hiện sanitize attributes.
     private function sanitizeAttributes(DOMElement $element, string $tag): void
     {
         foreach (iterator_to_array($element->attributes) as $attribute) {
@@ -99,6 +102,7 @@ class ProductDescriptionSanitizer
         }
     }
 
+    // Kiểm tra safe href.
     private function isSafeHref(string $href): bool
     {
         if ($href === '' || preg_match('/[\x00-\x20\x7f]/u', $href)) {

@@ -10,6 +10,7 @@ class RequestMetrics
 
     public int $externalCallCount = 0;
 
+    // Làm mới hoặc đặt lại dữ liệu theo nghiệp vụ của hàm.
     public function reset(string $requestId): void
     {
         $this->requestId = $requestId;

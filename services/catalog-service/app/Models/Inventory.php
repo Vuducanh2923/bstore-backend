@@ -28,11 +28,13 @@ class Inventory extends Model
         'reserved_quantity' => 'integer',
     ];
 
+    // Thực hiện biến thể.
     public function variant()
     {
         return $this->belongsTo(ProductVariant::class, 'product_variant_id');
     }
 
+    // Lấy available số lượng thuộc tính.
     public function getAvailableQuantityAttribute(): int
     {
         return (int) $this->quantity - (int) $this->reserved_quantity;

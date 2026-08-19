@@ -745,7 +745,7 @@ return [
                         'schema' => ['$ref' => '#/components/schemas/ErrorResponse'],
                         'example' => [
                             'success' => false,
-                            'message' => 'Upload logo that bai',
+                            'message' => 'Tải logo thất bại',
                         ],
                     ],
                 ],
@@ -1110,7 +1110,7 @@ return [
                 'type' => 'object',
                 'properties' => [
                     'success' => ['type' => 'boolean', 'example' => true],
-                    'message' => ['type' => 'string', 'example' => 'Upload anh thanh cong'],
+                    'message' => ['type' => 'string', 'example' => 'Tải ảnh thành công'],
                     'data' => [
                         'type' => 'object',
                         'properties' => [
@@ -1143,7 +1143,7 @@ return [
                 'type' => 'object',
                 'properties' => [
                     'success' => ['type' => 'boolean', 'example' => true],
-                    'message' => ['type' => 'string', 'example' => 'Success'],
+                    'message' => ['type' => 'string', 'example' => 'Thành công.'],
                     'data' => [
                         'type' => 'array',
                         'items' => ['$ref' => '#/components/schemas/HeaderCategory'],
@@ -1155,7 +1155,7 @@ return [
                 'type' => 'object',
                 'properties' => [
                     'success' => ['type' => 'boolean', 'example' => true],
-                    'message' => ['type' => 'string', 'example' => 'Success'],
+                    'message' => ['type' => 'string', 'example' => 'Thành công.'],
                     'data' => [
                         'type' => 'array',
                         'items' => ['$ref' => '#/components/schemas/HeaderBrand'],
@@ -1166,7 +1166,7 @@ return [
                 'type' => 'object',
                 'properties' => [
                     'success' => ['type' => 'boolean', 'example' => true],
-                    'message' => ['type' => 'string', 'example' => 'Success'],
+                    'message' => ['type' => 'string', 'example' => 'Thành công.'],
                     'data' => [
                         'type' => 'array',
                         'items' => ['$ref' => '#/components/schemas/Brand'],
@@ -1194,7 +1194,7 @@ return [
                 'type' => 'object',
                 'properties' => [
                     'success' => ['type' => 'boolean', 'example' => true],
-                    'message' => ['type' => 'string', 'example' => 'Success'],
+                    'message' => ['type' => 'string', 'example' => 'Thành công.'],
                     'data' => [
                         'type' => 'array',
                         'items' => ['$ref' => '#/components/schemas/ProductListItem'],
@@ -1224,7 +1224,7 @@ return [
                 'type' => 'object',
                 'properties' => [
                     'success' => ['type' => 'boolean', 'example' => true],
-                    'message' => ['type' => 'string', 'example' => 'Xoa du lieu thanh cong'],
+                    'message' => ['type' => 'string', 'example' => 'Xóa dữ liệu thành công'],
                 ],
             ],
             'ErrorResponse' => [
@@ -1237,7 +1237,7 @@ return [
             'ValidationErrorResponse' => [
                 'type' => 'object',
                 'properties' => [
-                    'message' => ['type' => 'string', 'example' => 'The given data was invalid.'],
+                    'message' => ['type' => 'string', 'example' => 'Dữ liệu đã cung cấp không hợp lệ.'],
                     'errors' => [
                         'type' => 'object',
                         'additionalProperties' => [

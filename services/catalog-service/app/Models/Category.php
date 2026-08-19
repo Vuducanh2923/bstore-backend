@@ -20,6 +20,7 @@ class Category extends Model
         'status',
     ];
 
+    // Thực hiện sản phẩm.
     public function products()
     {
         return $this->hasMany(Product::class);

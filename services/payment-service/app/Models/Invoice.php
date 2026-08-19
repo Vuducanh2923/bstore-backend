@@ -27,6 +27,7 @@ class Invoice extends Model
         'issued_at' => 'datetime',
     ];
 
+    // Thực hiện thanh toán.
     public function payment()
     {
         return $this->belongsTo(Payment::class);

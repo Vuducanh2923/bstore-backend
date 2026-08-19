@@ -295,11 +295,12 @@ test('vnpay order is rejected when calculated final amount is below minimum', fu
         ],
     ])
         ->assertUnprocessable()
-        ->assertJsonPath('data.final_amount.0', 'Don hang thanh toan VNPAY phai co tong tien lon hon hoac bang 1000');
+        ->assertJsonPath('data.final_amount.0', 'Đơn hàng thanh toán VNPAY phải có tổng tiền lớn hơn hoặc bằng 1000');
 
     expect(DB::connection('bstore_order')->table('orders')->count())->toBe(0);
 });
 
+// Thực hiện seed danh mục sản phẩm sản phẩm.
 function seedCatalogProduct(int $productId, int $variantId, float $price, ?float $salePrice, bool $isSale): void
 {
     DB::connection('bstore_catalog')->table('products')->insert([

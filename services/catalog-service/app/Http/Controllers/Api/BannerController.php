@@ -14,11 +14,14 @@ use Throwable;
 
 class BannerController extends Controller
 {
+
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(
         private readonly CloudinaryService $cloudinaryService,
         private readonly CatalogCache $cache,
     ) {}
 
+    // Lấy toàn bộ dữ liệu.
     public function index(Request $request): JsonResponse
     {
         $banners = $this->cache->remember(
@@ -45,6 +48,7 @@ class BannerController extends Controller
         ]);
     }
 
+    // Thực hiện ordered banner query.
     private function orderedBannerQuery(Builder $query): Builder
     {
         if ($this->bannerTableHasColumn('display_slot')) {
@@ -56,6 +60,7 @@ class BannerController extends Controller
             ->orderByDesc('id');
     }
 
+    // Lấy toàn bộ dữ liệu.
     public function show(int $id): JsonResponse
     {
         $banner = Banner::find($id);
@@ -63,7 +68,7 @@ class BannerController extends Controller
         if (! $banner) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay banner',
+                'message' => 'Không tìm thấy banner',
             ], 404);
         }
 
@@ -73,6 +78,7 @@ class BannerController extends Controller
         ]);
     }
 
+    // Tạo hoặc lưu dữ liệu theo nghiệp vụ của hàm.
     public function store(Request $request): JsonResponse
     {
         $data = $this->validatedData($request, true);
@@ -82,7 +88,7 @@ class BannerController extends Controller
         } catch (Throwable $exception) {
             report($exception);
 
-            return $this->cloudinaryError('Upload anh len Cloudinary that bai');
+            return $this->cloudinaryError('Tải ảnh lên Cloudinary thất bại');
         }
 
         $data = $this->onlyExistingBannerColumns($data);
@@ -91,11 +97,12 @@ class BannerController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Tao banner thanh cong',
+            'message' => 'Tạo banner thành công',
             'data' => $banner->fresh(),
         ], 201);
     }
 
+    // Cập nhật dữ liệu theo nghiệp vụ của hàm.
     public function update(Request $request, int $id): JsonResponse
     {
         $banner = Banner::find($id);
@@ -103,7 +110,7 @@ class BannerController extends Controller
         if (! $banner) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay banner',
+                'message' => 'Không tìm thấy banner',
             ], 404);
         }
 
@@ -115,7 +122,7 @@ class BannerController extends Controller
         } catch (Throwable $exception) {
             report($exception);
 
-            return $this->cloudinaryError('Upload anh len Cloudinary that bai');
+            return $this->cloudinaryError('Tải ảnh lên Cloudinary thất bại');
         }
 
         $data = $this->onlyExistingBannerColumns($data);
@@ -138,6 +145,7 @@ class BannerController extends Controller
         ]);
     }
 
+    // Xóa hoặc hủy dữ liệu theo nghiệp vụ của hàm.
     public function destroy(int $id): JsonResponse
     {
         $banner = Banner::find($id);
@@ -168,6 +176,7 @@ class BannerController extends Controller
         ]);
     }
 
+    // Thực hiện validated dữ liệu.
     private function validatedData(Request $request, bool $creating): array
     {
         $this->normalizeBooleanInput($request, 'status');
@@ -193,11 +202,13 @@ class BannerController extends Controller
         return $this->onlyExistingBannerColumns($data);
     }
 
+    // Thực hiện banner bảng has cột.
     private function bannerTableHasColumn(string $column): bool
     {
         return Schema::connection((new Banner)->getConnectionName())->hasColumn('banners', $column);
     }
 
+    // Thực hiện only existing banner columns.
     private function onlyExistingBannerColumns(array $data): array
     {
         $columns = Schema::connection((new Banner)->getConnectionName())->getColumnListing('banners');
@@ -205,6 +216,7 @@ class BannerController extends Controller
         return array_intersect_key($data, array_flip($columns));
     }
 
+    // Chuẩn hóa boolean input.
     private function normalizeBooleanInput(Request $request, string $key): void
     {
         $value = $request->input($key);
@@ -224,6 +236,7 @@ class BannerController extends Controller
         }
     }
 
+    // Thực hiện cùng hình ảnh dữ liệu.
     private function withImageData(Request $request, array $data, ?Banner $banner = null): array
     {
         unset($data['image']);
@@ -246,6 +259,7 @@ class BannerController extends Controller
         return $data;
     }
 
+    // Tải hoặc xuất banner hình ảnh.
     private function uploadBannerImage(Request $request): array
     {
         $uploadedImage = $this->cloudinaryService->uploadBannerImage($request->file('image'));
@@ -256,6 +270,7 @@ class BannerController extends Controller
         ];
     }
 
+    // Thực hiện cloudinary lỗi.
     private function cloudinaryError(string $message): JsonResponse
     {
         return response()->json([

@@ -28,6 +28,7 @@ class AppServiceProvider extends ServiceProvider
         $this->registerPerformanceInstrumentation();
     }
 
+    // Tạo hoặc lưu hiệu năng đo lường.
     private function registerPerformanceInstrumentation(): void
     {
         DB::listen(fn () => app(RequestMetrics::class)->databaseQueryCount++);
@@ -40,6 +41,7 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(ResponseReceived::class, fn (ResponseReceived $event) => $this->logSlowExternalCall($event));
     }
 
+    // Thực hiện log slow external call.
     private function logSlowExternalCall(ResponseReceived $event): void
     {
         $handlerStats = method_exists($event->response, 'handlerStats')

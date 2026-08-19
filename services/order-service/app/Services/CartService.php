@@ -13,8 +13,12 @@ use Throwable;
 
 class CartService
 {
+    private const MAX_ITEM_QUANTITY = 100;
+
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(private readonly CatalogPricingService $catalogPricingService) {}
 
+    // Tạo hoặc lưu dữ liệu theo nghiệp vụ của hàm.
     public function create(array $data): Cart
     {
         return DB::connection('bstore_order')->transaction(function () use ($data) {
@@ -24,21 +28,27 @@ class CartService
             $cart = Cart::create($data);
 
             foreach ($items as $item) {
+                $this->assertQuantityAvailable(
+                    (int) $item['product_variant_id'],
+                    (int) $item['quantity'],
+                );
                 $item['cart_id'] = $cart->id;
                 $item['subtotal'] = $this->subtotal($item);
 
                 CartItem::create($item);
             }
 
-            return $cart->fresh('items');
+            return $this->attachAvailableQuantities($cart->fresh('items'));
         });
     }
 
+    // Lấy toàn bộ dữ liệu.
     public function find(int $id): ?Cart
     {
         return $this->attachAvailableQuantities(Cart::with('items')->find($id));
     }
 
+    // Thực hiện cho người dùng.
     public function forUser(int $userId)
     {
         $carts = Cart::with('items')
@@ -46,11 +56,21 @@ class CartService
             ->orderByDesc('id')
             ->get();
 
-        $carts->each(fn (Cart $cart) => $this->attachAvailableQuantities($cart));
+        $availability = $this->availabilityForVariants(
+            $carts
+                ->flatMap(fn (Cart $cart) => $cart->items)
+                ->pluck('product_variant_id')
+                ->all(),
+        );
+
+        foreach ($carts as $cart) {
+            $this->applyAvailability($cart, $availability);
+        }
 
         return $carts;
     }
 
+    // Lấy cho người dùng.
     public function findForUser(int $userId, int $id): ?Cart
     {
         return $this->attachAvailableQuantities(Cart::with('items')
@@ -64,38 +84,14 @@ class CartService
             return $cart;
         }
 
-        try {
-            if (! Schema::connection('bstore_catalog')->hasTable('inventories')) {
-                return $cart;
-            }
+        $availability = $this->availabilityForVariants(
+            $cart->items->pluck('product_variant_id')->all(),
+        );
 
-            $available = DB::connection('bstore_catalog')
-                ->table('inventories')
-                ->whereIn('product_variant_id', $cart->items->pluck('product_variant_id')->all())
-                ->get(['product_variant_id', 'quantity', 'reserved_quantity'])
-                ->mapWithKeys(fn (object $row): array => [
-                    (int) $row->product_variant_id => max(
-                        0,
-                        (int) $row->quantity - (int) ($row->reserved_quantity ?? 0),
-                    ),
-                ]);
-        } catch (Throwable $exception) {
-            report($exception);
-
-            return $cart;
-        }
-
-        $cart->items->each(function (CartItem $item) use ($available): void {
-            $variantId = (int) $item->product_variant_id;
-
-            if ($available->has($variantId)) {
-                $item->setAttribute('available_quantity', (int) $available->get($variantId));
-            }
-        });
-
-        return $cart;
+        return $this->applyAvailability($cart, $availability);
     }
 
+    // Tạo hoặc lưu mặt hàng.
     public function addItem(int $userId, array $data): CartItem
     {
         return DB::connection('bstore_order')->transaction(function () use ($userId, $data) {
@@ -109,7 +105,7 @@ class CartService
 
             if (! $cart) {
                 throw ValidationException::withMessages([
-                    'cart_id' => ['Khong tim thay gio hang dang hoat dong cua khach hang'],
+                    'cart_id' => ['Không tìm thấy giỏ hàng đang hoạt động của khách hàng'],
                 ]);
             }
 
@@ -125,20 +121,29 @@ class CartService
 
             if ($item) {
                 $snapshot['quantity'] += (int) $item->quantity;
+                $this->assertQuantityAvailable(
+                    (int) $snapshot['product_variant_id'],
+                    (int) $snapshot['quantity'],
+                );
                 $item->fill($snapshot);
                 $item->subtotal = $this->subtotal($snapshot);
                 $item->save();
 
-                return $item->fresh() ?? $item;
+                return $this->attachAvailabilityToItem($item->fresh() ?? $item);
             }
 
+            $this->assertQuantityAvailable(
+                (int) $snapshot['product_variant_id'],
+                (int) $snapshot['quantity'],
+            );
             $snapshot['cart_id'] = $cart->id;
             $snapshot['subtotal'] = $this->subtotal($snapshot);
 
-            return CartItem::create($snapshot);
+            return $this->attachAvailabilityToItem(CartItem::create($snapshot));
         });
     }
 
+    // Cập nhật mặt hàng.
     public function updateItem(int $userId, int $itemId, int $quantity): ?CartItem
     {
         return DB::connection('bstore_order')->transaction(function () use ($userId, $itemId, $quantity) {
@@ -151,6 +156,7 @@ class CartService
                 return null;
             }
 
+            $this->assertQuantityAvailable((int) $item->product_variant_id, $quantity);
             $snapshot = $this->catalogPricingService->resolveOrderItems([[
                 'product_variant_id' => (int) $item->product_variant_id,
                 'quantity' => $quantity,
@@ -159,10 +165,103 @@ class CartService
             $item->subtotal = $this->subtotal($snapshot);
             $item->save();
 
-            return $item->fresh() ?? $item;
+            return $this->attachAvailabilityToItem($item->fresh() ?? $item);
         });
     }
 
+    private function assertQuantityAvailable(int $variantId, int $quantity): void
+    {
+        if ($quantity > self::MAX_ITEM_QUANTITY) {
+            throw ValidationException::withMessages([
+                'quantity' => ['Mỗi sản phẩm trong giỏ hàng không được vượt quá 100.'],
+            ]);
+        }
+
+        $available = $this->availabilityForVariants([$variantId])->get($variantId);
+
+        if ($available !== null && $quantity > $available) {
+            throw ValidationException::withMessages([
+                'quantity' => ["Sản phẩm chỉ còn {$available} sản phẩm trong kho."],
+            ]);
+        }
+    }
+
+    private function attachAvailableQuantities(?Cart $cart): ?Cart
+    {
+        if (! $cart) {
+            return null;
+        }
+
+        $availability = $this->availabilityForVariants(
+            $cart->items->pluck('product_variant_id')->all(),
+        );
+
+        return $this->applyAvailability($cart, $availability);
+    }
+
+    private function applyAvailability(Cart $cart, $availability): Cart
+    {
+        foreach ($cart->items as $item) {
+            if ($availability->has((int) $item->product_variant_id)) {
+                $item->setAttribute(
+                    'available_quantity',
+                    $availability->get((int) $item->product_variant_id),
+                );
+            }
+        }
+
+        return $cart;
+    }
+
+    private function attachAvailabilityToItem(CartItem $item): CartItem
+    {
+        $availability = $this->availabilityForVariants([(int) $item->product_variant_id]);
+
+        if ($availability->has((int) $item->product_variant_id)) {
+            $item->setAttribute(
+                'available_quantity',
+                $availability->get((int) $item->product_variant_id),
+            );
+        }
+
+        return $item;
+    }
+
+    private function availabilityForVariants(array $variantIds)
+    {
+        $variantIds = collect($variantIds)
+            ->map(fn ($id): int => (int) $id)
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($variantIds->isEmpty()) {
+            return collect();
+        }
+
+        try {
+            if (! Schema::connection('bstore_catalog')->hasTable('inventories')) {
+                return collect();
+            }
+
+            return DB::connection('bstore_catalog')
+                ->table('inventories')
+                ->whereIn('product_variant_id', $variantIds->all())
+                ->get(['product_variant_id', 'quantity', 'reserved_quantity'])
+                ->mapWithKeys(fn (object $inventory): array => [
+                    (int) $inventory->product_variant_id => max(
+                        0,
+                        (int) $inventory->quantity - (int) $inventory->reserved_quantity,
+                    ),
+                ]);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return collect();
+        }
+    }
+
+    // Xóa hoặc hủy mặt hàng.
     public function deleteItem(int $userId, int $itemId): bool
     {
         $item = CartItem::query()
@@ -172,6 +271,7 @@ class CartService
         return $item ? (bool) $item->delete() : false;
     }
 
+    // Làm mới hoặc đặt lại cho paid đơn hàng.
     public function clearForPaidOrder(int $orderId): array
     {
         return DB::connection('bstore_order')->transaction(function () use ($orderId) {
@@ -249,6 +349,7 @@ class CartService
         });
     }
 
+    // Thực hiện subtotal.
     private function subtotal(array $item): float
     {
         return (float) ($item['price'] ?? 0) * (int) ($item['quantity'] ?? 1);

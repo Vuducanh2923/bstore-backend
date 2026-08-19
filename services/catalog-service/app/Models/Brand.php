@@ -23,6 +23,7 @@ class Brand extends Model
         'status',
     ];
 
+    // Cung cấp trạng thái và thao tác cho timestamps.
     public function usesTimestamps(): bool
     {
         $cacheKey = spl_object_id($this->getConnection()).':'.$this->getTable();
@@ -33,6 +34,7 @@ class Brand extends Model
         );
     }
 
+    // Thực hiện sản phẩm.
     public function products()
     {
         return $this->hasMany(Product::class);

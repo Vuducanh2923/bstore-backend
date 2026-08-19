@@ -32,6 +32,7 @@ class CartItem extends Model
         'subtotal' => 'decimal:2',
     ];
 
+    // Thực hiện giỏ hàng.
     public function cart()
     {
         return $this->belongsTo(Cart::class);

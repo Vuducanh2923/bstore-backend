@@ -9,6 +9,8 @@ use Throwable;
 
 class OrderHistoryService
 {
+
+    // Thực hiện ghi nhận.
     public function record(
         int $orderId,
         string $action,
@@ -41,6 +43,7 @@ class OrderHistoryService
         }
     }
 
+    // Thực hiện previous trạng thái before hủy.
     public function previousStatusBeforeCancel(int $orderId): ?string
     {
         if (! $this->tableExists()) {
@@ -54,6 +57,7 @@ class OrderHistoryService
             ->value('old_status');
     }
 
+    // Thực hiện bảng tồn tại.
     private function tableExists(): bool
     {
         try {

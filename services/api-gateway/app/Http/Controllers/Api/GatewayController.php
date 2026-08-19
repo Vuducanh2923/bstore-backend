@@ -92,6 +92,7 @@ class GatewayController extends Controller
         'payments' => 'payment',
     ];
 
+    // Thực hiện health.
     public function health(): JsonResponse
     {
         return response()->json([
@@ -100,6 +101,7 @@ class GatewayController extends Controller
         ]);
     }
 
+    // Thực hiện forward.
     public function forward(Request $request, string $path): Response|JsonResponse
     {
         $normalizedPath = trim($path, '/');
@@ -162,7 +164,7 @@ class GatewayController extends Controller
             if (preg_match('#^admin/orders/[0-9]+/payment-status$#', $normalizedPath) === 1
                 && strtoupper((string) ($accessToken['role'] ?? '')) !== 'ADMIN') {
                 return response()->json([
-                    'message' => 'Ban khong co quyen thuc hien chuc nang nay.',
+                    'message' => 'Bạn không có quyền thực hiện chức năng này.',
                     'code' => 'FORBIDDEN',
                 ], 403);
             }
@@ -173,7 +175,7 @@ class GatewayController extends Controller
         if (! $serviceName) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gateway khong tim thay service phu hop',
+                'message' => 'Gateway không tìm thấy dịch vụ phù hợp',
             ], 404);
         }
 
@@ -207,6 +209,7 @@ class GatewayController extends Controller
         return $this->send($pending, $request, $targetUrl, $options, $serviceName);
     }
 
+    // Thực hiện đang chờ yêu cầu.
     private function pendingRequest(Request $request): PendingRequest
     {
         $pending = Http::withHeaders($this->forwardHeaders($request))
@@ -220,6 +223,7 @@ class GatewayController extends Controller
         return $pending;
     }
 
+    // Gửi hoặc phát dữ liệu theo nghiệp vụ của hàm.
     private function send($pending, Request $request, string $targetUrl, array $options, string $serviceName): Response|JsonResponse
     {
         try {
@@ -235,6 +239,7 @@ class GatewayController extends Controller
             ->withHeaders($this->responseHeaders($serviceResponse));
     }
 
+    // Xây dựng hoặc chuyển đổi service tên.
     private function resolveServiceName(string $path): ?string
     {
         $normalizedPath = trim($path, '/');
@@ -252,6 +257,7 @@ class GatewayController extends Controller
         return self::ROUTE_MAP[$firstSegment] ?? null;
     }
 
+    // Kiểm tra xác thực quản trị đường dẫn.
     private function isAuthAdminPath(string $path): bool
     {
         foreach (self::AUTH_ADMIN_PATH_PATTERNS as $pattern) {
@@ -263,6 +269,7 @@ class GatewayController extends Controller
         return false;
     }
 
+    // Thực hiện khớp any.
     private function matchesAny(string $path, array $patterns): bool
     {
         foreach ($patterns as $pattern) {
@@ -274,6 +281,7 @@ class GatewayController extends Controller
         return false;
     }
 
+    // Kiểm tra công khai yêu cầu.
     private function isPublicRequest(Request $request, string $path): bool
     {
         $patterns = match ($request->method()) {
@@ -285,6 +293,7 @@ class GatewayController extends Controller
         return $this->matchesAny($path, $patterns);
     }
 
+    // Thực hiện target url.
     private function targetUrl(string $serviceName, string $path): string
     {
         $baseUrl = rtrim((string) config("microservices.services.{$serviceName}.url"), '/');
@@ -292,6 +301,7 @@ class GatewayController extends Controller
         return $baseUrl.'/api/'.ltrim($path, '/');
     }
 
+    // Thực hiện forward headers.
     private function forwardHeaders(Request $request): array
     {
         return collect($request->headers->all())
@@ -342,6 +352,7 @@ class GatewayController extends Controller
         return (array) data_get($response->json(), 'data', []);
     }
 
+    // Thực hiện token invalid phản hồi.
     private function tokenInvalidResponse(): JsonResponse
     {
         return response()->json([
@@ -350,6 +361,7 @@ class GatewayController extends Controller
         ], 401);
     }
 
+    // Thực hiện multipart dữ liệu gửi.
     private function multipartPayload(Request $request): array
     {
         $multipart = [];
@@ -365,6 +377,7 @@ class GatewayController extends Controller
         return $multipart;
     }
 
+    // Thực hiện append multipart giá trị.
     private function appendMultipartValue(array &$multipart, string $name, mixed $value): void
     {
         if (is_array($value)) {
@@ -381,6 +394,7 @@ class GatewayController extends Controller
         ];
     }
 
+    // Thực hiện append multipart tệp.
     private function appendMultipartFile(array &$multipart, string $name, UploadedFile|array $file): void
     {
         if (is_array($file)) {
@@ -398,6 +412,7 @@ class GatewayController extends Controller
         ];
     }
 
+    // Thực hiện phản hồi headers.
     private function responseHeaders(ClientResponse $response): array
     {
         return collect($response->headers())

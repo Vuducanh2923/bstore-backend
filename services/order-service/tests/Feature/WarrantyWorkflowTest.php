@@ -92,17 +92,19 @@ beforeEach(function () {
     });
 
     DB::connection('bstore_catalog')->table('warranty_policies')->insert([
-        'id' => 1, 'name' => 'Bao hanh 12 thang', 'duration_months' => 12, 'repair_support' => true, 'status' => 'active',
+        'id' => 1, 'name' => 'Bảo hành 12 thang', 'duration_months' => 12, 'repair_support' => true, 'status' => 'active',
     ]);
     DB::connection('bstore_catalog')->table('products')->insert(['id' => 100, 'warranty_policy_id' => 1]);
     DB::connection('bstore_catalog')->table('product_variants')->insert(['id' => 501, 'product_id' => 100]);
 });
 
+// Thực hiện bảo hành token.
 function warrantyToken(int $id, string $role = 'CUSTOMER'): string
 {
     return app(AuthTokenService::class)->generate($id, $role, "user{$id}@example.com");
 }
 
+// Thực hiện bảo hành đơn hàng.
 function warrantyOrder(array $overrides = []): array
 {
     $orderId = DB::connection('bstore_order')->table('orders')->insertGetId([
@@ -132,6 +134,7 @@ function warrantyOrder(array $overrides = []): array
     return [$orderId, $itemId];
 }
 
+// Tạo hoặc lưu bảo hành through API.
 function createWarrantyThroughApi($test, int $userId = 10, array $overrides = [])
 {
     [$orderId, $itemId] = warrantyOrder(['user_id' => $userId] + $overrides);
@@ -139,8 +142,8 @@ function createWarrantyThroughApi($test, int $userId = 10, array $overrides = []
     return $test->withToken(warrantyToken($userId))->postJson('/api/customer/warranty-requests', [
         'order_id' => $orderId,
         'order_item_id' => $itemId,
-        'reason' => 'San pham khong khoi dong',
-        'description' => 'Thiet bi khong len nguon',
+        'reason' => 'Sản phẩm không khởi động',
+        'description' => 'Thiet bi không lên nguồn',
     ]);
 }
 
@@ -163,20 +166,20 @@ test('customer submits a warranty request for a completed order', function () {
 test('customer cannot submit warranty for another customer order', function () {
     [$orderId, $itemId] = warrantyOrder(['user_id' => 11]);
     $this->withToken(warrantyToken(10))->postJson('/api/customer/warranty-requests', [
-        'order_id' => $orderId, 'order_item_id' => $itemId, 'reason' => 'Khong khoi dong',
+        'order_id' => $orderId, 'order_item_id' => $itemId, 'reason' => 'Không khởi động',
     ])->assertForbidden();
 });
 
 test('undelivered order is rejected', function () {
     createWarrantyThroughApi($this, 10, ['status' => 'shipping'])
         ->assertUnprocessable()
-        ->assertJsonPath('message', 'Don hang chua duoc giao thanh cong');
+        ->assertJsonPath('message', 'Đơn hàng chưa được giao thành công');
 });
 
 test('expired warranty is rejected', function () {
     createWarrantyThroughApi($this, 10, ['delivered_at' => now()->subMonths(13)])
         ->assertUnprocessable()
-        ->assertJsonPath('message', 'San pham da het han bao hanh');
+        ->assertJsonPath('message', 'Sản phẩm đã hết hạn bảo hành');
 });
 
 test('duplicate active warranty request returns conflict', function () {
@@ -205,7 +208,7 @@ test('staff rejects a pending request', function () {
     $id = WarrantyRequest::first()->id;
 
     $this->withToken(warrantyToken(91, 'STAFF'))->putJson("/api/admin/warranty-requests/{$id}/reject", [
-        'rejection_reason' => 'Loi khong thuoc pham vi bao hanh',
+        'rejection_reason' => 'Loi không thuộc phạm vi bảo hành',
     ])->assertOk()->assertJsonPath('data.status', 'rejected');
 });
 

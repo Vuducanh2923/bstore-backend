@@ -9,6 +9,7 @@ return new class extends Migration
 {
     private const CONNECTION = 'bstore_payment';
 
+    // Áp dụng thay đổi cấu trúc cơ sở dữ liệu.
     public function up(): void
     {
         $db = DB::connection(self::CONNECTION);
@@ -49,8 +50,10 @@ return new class extends Migration
         $this->addForeign('invoices', 'payment_id', 'payments', 'cascade');
     }
 
+    // Hoàn tác thay đổi cấu trúc cơ sở dữ liệu.
     public function down(): void {}
 
+    // Tạo hoặc lưu duy nhất.
     private function addUnique(string $table, array $columns, string $name): void
     {
         $schema = Schema::connection(self::CONNECTION);
@@ -63,6 +66,7 @@ return new class extends Migration
         $schema->table($table, fn (Blueprint $blueprint) => $blueprint->unique($columns, $name));
     }
 
+    // Tạo hoặc lưu khóa ngoại.
     private function addForeign(string $table, string $column, string $parent, string $onDelete): void
     {
         $schema = Schema::connection(self::CONNECTION);
@@ -75,6 +79,7 @@ return new class extends Migration
         $schema->table($table, fn (Blueprint $blueprint) => $blueprint->foreign($column, $name)->references('id')->on($parent)->onDelete($onDelete));
     }
 
+    // Lấy tồn tại.
     private function indexExists(string $table, string $name): bool
     {
         $db = DB::connection(self::CONNECTION);
@@ -83,6 +88,7 @@ return new class extends Migration
             ->where('TABLE_NAME', $table)->where('INDEX_NAME', $name)->exists();
     }
 
+    // Thực hiện khóa ngoại tồn tại.
     private function foreignExists(string $table, string $name): bool
     {
         $db = DB::connection(self::CONNECTION);

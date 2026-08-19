@@ -13,17 +13,21 @@ use Illuminate\Validation\Rule;
 
 class OrderController extends Controller
 {
+
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(private readonly OrderService $orderService) {}
 
+    // Lấy toàn bộ dữ liệu.
     public function index(): JsonResponse
     {
         return response()->json([
             'success' => true,
-            'message' => 'Lay danh sach don hang thanh cong',
+            'message' => 'Lấy danh sách đơn hàng thành công',
             'data' => $this->orderService->all(),
         ]);
     }
 
+    // Thực hiện khách hàng đơn hàng.
     public function customerOrders(Request $request): JsonResponse
     {
         $orders = $this->orderService->paginatedForCustomer(
@@ -33,7 +37,7 @@ class OrderController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Lay danh sach don hang thanh cong',
+            'message' => 'Lấy danh sách đơn hàng thành công',
             'data' => $this->orderService->serializeOrders($orders->items()),
             'pagination' => [
                 'page' => $orders->currentPage(),
@@ -43,6 +47,7 @@ class OrderController extends Controller
         ]);
     }
 
+    // Lấy danh sách đơn hàng cho trang quản trị.
     public function adminOrders(Request $request): JsonResponse
     {
         $orders = $this->orderService->adminOrders($request->only([
@@ -55,7 +60,7 @@ class OrderController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Lay danh sach don hang thanh cong',
+            'message' => 'Lấy danh sách đơn hàng thành công',
             'data' => $this->orderService->serializeAdminOrders($orders->items()),
             'pagination' => [
                 'page' => $orders->currentPage(),
@@ -66,6 +71,7 @@ class OrderController extends Controller
         ]);
     }
 
+    // Thực hiện quản trị đơn hàng chi tiết.
     public function adminOrderDetail(int|string $id): JsonResponse
     {
         $order = $this->orderService->findForAdmin((int) $id);
@@ -73,18 +79,19 @@ class OrderController extends Controller
         if (! $order) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay don hang',
+                'message' => 'Không tìm thấy đơn hàng',
                 'data' => null,
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Lay chi tiet don hang thanh cong',
+            'message' => 'Lấy chi tiết đơn hàng thành công',
             'data' => $this->orderService->serializeAdminOrder($order),
         ]);
     }
 
+    // Cập nhật quản trị đơn hàng trạng thái.
     public function updateAdminOrderStatus(Request $request, int|string $id): JsonResponse
     {
         $data = $request->validate([
@@ -103,24 +110,25 @@ class OrderController extends Controller
         if (! $order) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay don hang',
+                'message' => 'Không tìm thấy đơn hàng',
                 'data' => null,
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Cap nhat trang thai don hang thanh cong',
+            'message' => 'Cập nhật trạng thái đơn hàng thành công',
             'data' => $this->orderService->serializeAdminOrder($order),
         ]);
     }
 
+    // Cập nhật quản trị đơn hàng thanh toán trạng thái.
     public function updateAdminOrderPaymentStatus(Request $request, int|string $id): JsonResponse
     {
         $actor = $this->authenticatedActor($request);
 
         if (strtoupper((string) ($actor['role'] ?? '')) !== 'ADMIN') {
-            throw new AuthorizationException('Khong co quyen cap nhat trang thai thanh toan');
+            throw new AuthorizationException('Không có quyền cập nhật trạng thái thanh toán');
         }
 
         $data = $request->validate([
@@ -138,14 +146,14 @@ class OrderController extends Controller
         if (! $order) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay don hang',
+                'message' => 'Không tìm thấy đơn hàng',
                 'data' => null,
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Cap nhat trang thai thanh toan thanh cong.',
+            'message' => 'Cập nhật trạng thái thanh toán thành công.',
             'data' => [
                 'id' => $order->id,
                 'order_code' => $order->order_code,
@@ -156,6 +164,7 @@ class OrderController extends Controller
         ]);
     }
 
+    // Gán đơn hàng cho nhân viên phụ trách.
     public function assignToStaff(Request $request, int|string $id): JsonResponse
     {
         $data = $request->validate([
@@ -172,18 +181,19 @@ class OrderController extends Controller
         if (! $order) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay don hang',
+                'message' => 'Không tìm thấy đơn hàng',
                 'data' => null,
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Nhan xu ly don hang thanh cong',
+            'message' => 'Nhận xử lý đơn hàng thành công',
             'data' => $this->orderService->serializeAdminOrder($order),
         ]);
     }
 
+    // Thực hiện khách hàng đơn hàng chi tiết.
     public function customerOrderDetail(Request $request, int|string $id): JsonResponse
     {
         $order = $this->orderService->findForCustomer($this->authenticatedUserId($request), (int) $id);
@@ -191,29 +201,31 @@ class OrderController extends Controller
         if (! $order) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay don hang',
+                'message' => 'Không tìm thấy đơn hàng',
                 'data' => null,
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Lay chi tiet don hang thanh cong',
+            'message' => 'Lấy chi tiết đơn hàng thành công',
             'data' => $this->orderService->serializeOrder($order),
         ]);
     }
 
+    // Thực hiện nội bộ khách hàng đơn hàng.
     public function internalCustomerOrders(int|string $userId): JsonResponse
     {
         $orders = $this->orderService->forCustomer((int) $userId);
 
         return response()->json([
             'success' => true,
-            'message' => 'Lay lich su mua hang thanh cong',
+            'message' => 'Lấy lịch sử mua hàng thành công',
             'data' => $this->orderService->serializeOrders($orders),
         ]);
     }
 
+    // Thực hiện nội bộ thanh toán context.
     public function internalPaymentContext(Request $request, int|string $orderId): JsonResponse
     {
         $data = $request->validate([
@@ -227,18 +239,19 @@ class OrderController extends Controller
         if (! $context) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay don hang phu hop',
+                'message' => 'Không tìm thấy đơn hàng phù hợp',
                 'data' => null,
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Lay ngu canh thanh toan thanh cong',
+            'message' => 'Lấy ngữ cảnh thanh toán thành công',
             'data' => $context,
         ]);
     }
 
+    // Thực hiện nội bộ update thanh toán trạng thái.
     public function internalUpdatePaymentStatus(Request $request, int|string $orderId): JsonResponse
     {
         $data = $request->validate([
@@ -261,7 +274,7 @@ class OrderController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay don hang',
+                'message' => 'Không tìm thấy đơn hàng',
                 'data' => null,
             ], 404);
         }
@@ -282,11 +295,12 @@ class OrderController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Cap nhat trang thai thanh toan don hang thanh cong',
+            'message' => 'Cập nhật trạng thái thanh toán đơn hàng thành công',
             'data' => $responseData,
         ]);
     }
 
+    // Tạo hoặc lưu dữ liệu theo nghiệp vụ của hàm.
     public function store(Request $request): JsonResponse
     {
         $request->merge([
@@ -317,11 +331,12 @@ class OrderController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Tao don hang thanh cong',
+            'message' => 'Tạo đơn hàng thành công',
             'data' => $order,
         ], 201);
     }
 
+    // Thực hiện consolidate đơn hàng mặt hàng.
     private function consolidateOrderItems(mixed $items): mixed
     {
         if (! is_array($items)) {
@@ -362,6 +377,7 @@ class OrderController extends Controller
         return array_values($consolidated);
     }
 
+    // Thực hiện yêu cầu hủy.
     public function requestCancel(Request $request, int|string $id): JsonResponse
     {
         $data = $request->validate([
@@ -377,18 +393,19 @@ class OrderController extends Controller
         if (! $order) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay don hang',
+                'message' => 'Không tìm thấy đơn hàng',
                 'data' => null,
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Gui yeu cau huy don thanh cong',
+            'message' => 'Gửi yêu cầu hủy đơn thành công',
             'data' => $this->orderService->serializeOrder($order),
         ]);
     }
 
+    // Cập nhật hủy.
     public function approveCancel(Request $request, int|string $id): JsonResponse
     {
         $data = $request->validate([
@@ -405,18 +422,19 @@ class OrderController extends Controller
         if (! $order) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay don hang',
+                'message' => 'Không tìm thấy đơn hàng',
                 'data' => null,
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Duyet huy don thanh cong',
+            'message' => 'Duyệt hủy đơn thành công',
             'data' => $this->orderService->serializeAdminOrder($order),
         ]);
     }
 
+    // Cập nhật hủy.
     public function rejectCancel(Request $request, int|string $id): JsonResponse
     {
         $data = $request->validate([
@@ -433,18 +451,19 @@ class OrderController extends Controller
         if (! $order) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay don hang',
+                'message' => 'Không tìm thấy đơn hàng',
                 'data' => null,
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Tu choi huy don thanh cong',
+            'message' => 'Từ chối hủy đơn thành công',
             'data' => $this->orderService->serializeAdminOrder($order),
         ]);
     }
 
+    // Thực hiện yêu cầu trả về.
     public function requestReturn(Request $request, int|string $id): JsonResponse
     {
         $data = $request->validate([
@@ -457,16 +476,17 @@ class OrderController extends Controller
         );
 
         if (! $order) {
-            return response()->json(['success' => false, 'message' => 'Khong tim thay don hang', 'data' => null], 404);
+            return response()->json(['success' => false, 'message' => 'Không tìm thấy đơn hàng', 'data' => null], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Gui yeu cau tra hang thanh cong',
+            'message' => 'Gửi yêu cầu trả hàng thành công',
             'data' => $this->orderService->serializeOrder($order),
         ]);
     }
 
+    // Cập nhật trả về trạng thái.
     public function updateReturnStatus(Request $request, int|string $id, string $status): JsonResponse
     {
         $status = strtolower($status);
@@ -491,21 +511,23 @@ class OrderController extends Controller
         );
 
         if (! $order) {
-            return response()->json(['success' => false, 'message' => 'Khong tim thay don hang', 'data' => null], 404);
+            return response()->json(['success' => false, 'message' => 'Không tìm thấy đơn hàng', 'data' => null], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Cap nhat trang thai tra hang thanh cong',
+            'message' => 'Cập nhật trạng thái trả hàng thành công',
             'data' => $this->orderService->serializeAdminOrder($order),
         ]);
     }
 
+    // Thực hiện authenticated người dùng id.
     private function authenticatedUserId(Request $request): int
     {
         return (int) data_get($request->attributes->get('auth_user'), 'id');
     }
 
+    // Thực hiện authenticated người thực hiện.
     private function authenticatedActor(Request $request): array
     {
         return (array) $request->attributes->get('auth_user', []);

@@ -28,16 +28,19 @@ class Payment extends Model
         'paid_at' => 'datetime',
     ];
 
+    // Thực hiện transactions.
     public function transactions()
     {
         return $this->hasMany(PaymentTransaction::class);
     }
 
+    // Thực hiện invoices.
     public function invoices()
     {
         return $this->hasMany(Invoice::class);
     }
 
+    // Thực hiện refunds.
     public function refunds()
     {
         return $this->hasMany(PaymentRefund::class);

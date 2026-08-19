@@ -340,7 +340,7 @@ test('VNPAY create route is forwarded to payment service with authorization head
         ->postJson('/api/payments/vnpay/create', [
             'order_id' => 123,
             'amount' => 90000,
-            'order_info' => 'Thanh toan don hang 123',
+            'order_info' => 'Thanh toán đơn hàng 123',
         ])
         ->assertCreated();
 
@@ -499,7 +499,7 @@ test('VNPAY return route is forwarded to payment service with full query string 
         'vnp_BankCode' => 'NCB',
         'vnp_BankTranNo' => 'VNP14131242',
         'vnp_CardType' => 'ATM',
-        'vnp_OrderInfo' => 'Thanh toan don hang 123',
+        'vnp_OrderInfo' => 'Thanh toán đơn hàng 123',
         'vnp_PayDate' => '20260702104512',
         'vnp_ResponseCode' => '00',
         'vnp_TmnCode' => '3U5A2FCK',

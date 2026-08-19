@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+
+    // Áp dụng thay đổi cấu trúc cơ sở dữ liệu.
     public function up(): void
     {
         if (Schema::hasTable('orders')) {
@@ -100,6 +102,7 @@ return new class extends Migration
         }
     }
 
+    // Hoàn tác thay đổi cấu trúc cơ sở dữ liệu.
     public function down(): void
     {
         Schema::dropIfExists('notifications');

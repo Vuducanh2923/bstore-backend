@@ -8,6 +8,7 @@ return new class extends Migration
 {
     private const CONNECTION = 'bstore_order';
 
+    // Áp dụng thay đổi cấu trúc cơ sở dữ liệu.
     public function up(): void
     {
         if (
@@ -32,6 +33,7 @@ return new class extends Migration
         }
     }
 
+    // Hoàn tác thay đổi cấu trúc cơ sở dữ liệu.
     public function down(): void
     {
         if (

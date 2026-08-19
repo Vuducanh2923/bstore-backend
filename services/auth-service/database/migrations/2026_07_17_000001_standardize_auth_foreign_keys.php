@@ -45,6 +45,7 @@ return new class extends Migration
         ],
     ];
 
+    // Áp dụng thay đổi cấu trúc cơ sở dữ liệu.
     public function up(): void
     {
         $database = DB::connection(self::CONNECTION);
@@ -77,6 +78,7 @@ return new class extends Migration
         }
     }
 
+    // Hoàn tác thay đổi cấu trúc cơ sở dữ liệu.
     public function down(): void
     {
         $database = DB::connection(self::CONNECTION);
@@ -96,6 +98,7 @@ return new class extends Migration
         }
     }
 
+    // Thực hiện assert schema is ready.
     private function assertSchemaIsReady(): void
     {
         $schema = Schema::connection(self::CONNECTION);
@@ -105,13 +108,14 @@ return new class extends Migration
                 || ! $schema->hasColumn($relation['table'], $relation['column'])
                 || ! $schema->hasColumn($relation['parent'], 'id')) {
                 throw new \RuntimeException(sprintf(
-                    'Cannot add %s: required Auth Service tables or columns are missing.',
+                    'Không thể thêm %s: thiếu bảng hoặc cột bắt buộc của Dịch vụ xác thực.',
                     $relation['name'],
                 ));
             }
         }
     }
 
+    // Thực hiện assert no orphans.
     private function assertNoOrphans(): void
     {
         $database = DB::connection(self::CONNECTION);
@@ -125,7 +129,7 @@ return new class extends Migration
 
             if ($count > 0) {
                 throw new \RuntimeException(sprintf(
-                    'Cannot add %s: %d orphaned record(s) found. Resolve them manually before rerunning this migration.',
+                    'Không thể thêm %s: tìm thấy %d bản ghi mồ côi. Hãy xử lý thủ công trước khi chạy lại migration.',
                     $relation['name'],
                     $count,
                 ));
@@ -133,6 +137,7 @@ return new class extends Migration
         }
     }
 
+    // Thực hiện assert only expected khóa ngoại keys.
     private function assertOnlyExpectedForeignKeys(): void
     {
         foreach (self::RELATIONS as $relation) {
@@ -148,7 +153,7 @@ return new class extends Migration
 
                 if (! in_array($name, [$relation['name'], self::LEGACY_CONSTRAINTS[$relation['name']]], true)) {
                     throw new \RuntimeException(sprintf(
-                        'Cannot standardize %s: unexpected foreign key %s exists on %s.%s.',
+                        'Không thể chuẩn hóa %s: khóa ngoại ngoài dự kiến %s đang tồn tại trên %s.%s.',
                         $relation['name'],
                         $name,
                         $relation['table'],
@@ -159,11 +164,13 @@ return new class extends Migration
         }
     }
 
+    // Thực hiện xác thực tables.
     private function authTables(): array
     {
         return ['roles', 'users', 'user_addresses', 'auth_sessions'];
     }
 
+    // Xây dựng hoặc chuyển đổi cho inno db if needed.
     private function convertToInnoDbIfNeeded(string $table): void
     {
         $database = DB::connection(self::CONNECTION);
@@ -174,13 +181,15 @@ return new class extends Migration
         }
     }
 
+    // Thực hiện assert inno db.
     private function assertInnoDb(string $table): void
     {
         if ($this->tableEngine($table) !== 'INNODB') {
-            throw new \RuntimeException("Cannot add foreign keys: {$table} is not using an InnoDB-compatible engine.");
+            throw new \RuntimeException("Không thể thêm khóa ngoại: {$table} không sử dụng storage engine tương thích với InnoDB.");
         }
     }
 
+    // Thực hiện bảng engine.
     private function tableEngine(string $table): string
     {
         $row = DB::connection(self::CONNECTION)->selectOne(
@@ -191,6 +200,7 @@ return new class extends Migration
         return strtoupper((string) ($row?->ENGINE ?? ''));
     }
 
+    // Thực hiện align child cột cùng parent.
     private function alignChildColumnWithParent(array $relation): void
     {
         $database = DB::connection(self::CONNECTION);
@@ -210,7 +220,7 @@ return new class extends Migration
         $shouldBeNullable = $relation['nullable'] ? 'YES' : 'NO';
 
         if ($parentType === '' || $childType === '') {
-            throw new \RuntimeException("Cannot inspect column types for {$relation['name']}.");
+            throw new \RuntimeException("Không thể kiểm tra kiểu cột cho {$relation['name']}.");
         }
 
         if (strtolower($childType) !== strtolower($parentType) || $child->IS_NULLABLE !== $shouldBeNullable) {
@@ -219,6 +229,7 @@ return new class extends Migration
         }
     }
 
+    // Tạo hoặc lưu khóa ngoại khóa.
     private function addForeignKey(array $relation, ?string $name = null, string $onUpdate = 'CASCADE'): void
     {
         $name ??= $relation['name'];
@@ -235,6 +246,7 @@ return new class extends Migration
         ));
     }
 
+    // Thực hiện drop khóa ngoại if tồn tại.
     private function dropForeignIfExists(string $table, string $name): void
     {
         if (! $this->foreignExists($table, $name)) {
@@ -244,10 +256,11 @@ return new class extends Migration
         try {
             DB::connection(self::CONNECTION)->statement("ALTER TABLE `{$table}` DROP FOREIGN KEY `{$name}`");
         } catch (Exception $exception) {
-            throw new \RuntimeException("Unable to drop foreign key {$name} from {$table}.", previous: $exception);
+            throw new \RuntimeException("Không thể xóa khóa ngoại {$name} khỏi {$table}.", previous: $exception);
         }
     }
 
+    // Thực hiện khóa ngoại tồn tại.
     private function foreignExists(string $table, string $name): bool
     {
         return DB::connection(self::CONNECTION)->table('information_schema.TABLE_CONSTRAINTS')

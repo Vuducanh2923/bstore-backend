@@ -10,6 +10,8 @@ use Throwable;
 
 class CatalogPricingService
 {
+
+    // Thực hiện áp dụng current prices.
     public function applyCurrentPrices(array $items): array
     {
         return $this->resolveOrderItems($items);
@@ -28,13 +30,13 @@ class CatalogPricingService
 
         if ($variantIds->isEmpty()) {
             throw ValidationException::withMessages([
-                'items' => ['Don hang phai co it nhat mot san pham'],
+                'items' => ['Đơn hàng phải có ít nhất một sản phẩm'],
             ]);
         }
 
         if ($variantIds->unique()->count() !== $variantIds->count()) {
             throw ValidationException::withMessages([
-                'items' => ['Moi bien the san pham chi duoc xuat hien mot lan'],
+                'items' => ['Mỗi biến thể sản phẩm chỉ được xuất hiện một lần'],
             ]);
         }
 
@@ -68,7 +70,7 @@ class CatalogPricingService
             report($exception);
 
             throw ValidationException::withMessages([
-                'items' => ['Khong the xac minh san pham tu Catalog'],
+                'items' => ['Không thể xác minh sản phẩm tu Catalog'],
             ]);
         }
 
@@ -76,7 +78,7 @@ class CatalogPricingService
 
         if ($missingIds !== []) {
             throw ValidationException::withMessages([
-                'items' => ['Bien the san pham khong ton tai: '.implode(', ', $missingIds)],
+                'items' => ['Biến thể sản phẩm không tồn tại: '.implode(', ', $missingIds)],
             ]);
         }
 
@@ -90,7 +92,7 @@ class CatalogPricingService
 
             if (! $this->isActive($row->variant_status ?? null) || ! $this->isActive($row->product_status ?? null)) {
                 throw ValidationException::withMessages([
-                    'items' => ["Bien the san pham {$variantId} khong con kinh doanh"],
+                    'items' => ["Biến thể sản phẩm {$variantId} không cón kinh doanh"],
                 ]);
             }
 
@@ -147,6 +149,7 @@ class CatalogPricingService
         }
     }
 
+    // Thực hiện required danh mục sản phẩm columns.
     private function requiredCatalogColumns(): array
     {
         try {
@@ -172,11 +175,12 @@ class CatalogPricingService
             report($exception);
 
             throw ValidationException::withMessages([
-                'items' => ['Catalog khong san sang de xac minh gia san pham'],
+                'items' => ['Catalog không san sang de xác minh giá sản phẩm'],
             ]);
         }
     }
 
+    // Thực hiện hình ảnh bởi biến thể.
     private function imagesByVariant(Collection $catalogRows): Collection
     {
         try {
@@ -225,6 +229,7 @@ class CatalogPricingService
         }
     }
 
+    // Thực hiện effective price.
     private function effectivePrice(object $product): float
     {
         $variantPrice = isset($product->variant_price) ? (float) $product->variant_price : 0.0;
@@ -245,6 +250,7 @@ class CatalogPricingService
         return $regularPrice;
     }
 
+    // Kiểm tra đang hoạt động.
     private function isActive(mixed $status): bool
     {
         return $status === null || $status === '' || strtolower((string) $status) === 'active';

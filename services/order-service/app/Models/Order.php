@@ -139,6 +139,7 @@ class Order extends Model
         'inventory_updated_at' => 'datetime',
     ];
 
+    // Thực hiện booted.
     protected static function booted(): void
     {
         static::creating(function (Order $order): void {
@@ -164,41 +165,49 @@ class Order extends Model
         });
     }
 
+    // Thực hiện mặt hàng.
     public function items()
     {
         return $this->hasMany(OrderItem::class);
     }
 
+    // Thực hiện discounts.
     public function discounts()
     {
         return $this->hasMany(OrderDiscount::class);
     }
 
+    // Thực hiện histories.
     public function histories()
     {
         return $this->hasMany(OrderHistory::class);
     }
 
+    // Thực hiện hoàn tiền yêu cầu.
     public function refundRequests()
     {
         return $this->hasMany(RefundRequest::class);
     }
 
+    // Thực hiện complaints.
     public function complaints()
     {
         return $this->hasMany(Complaint::class);
     }
 
+    // Thực hiện bảo hành yêu cầu.
     public function warrantyRequests()
     {
         return $this->hasMany(WarrantyRequest::class);
     }
 
+    // Thực hiện trạng thái nhãn.
     public function statusLabel(): ?string
     {
         return self::STATUS_LABELS[$this->status] ?? $this->status;
     }
 
+    // Thực hiện thanh toán trạng thái nhãn.
     public function paymentStatusLabel(): ?string
     {
         return self::PAYMENT_STATUS_LABELS[$this->payment_status] ?? $this->payment_status;

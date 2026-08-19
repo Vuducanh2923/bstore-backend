@@ -17,6 +17,7 @@ class Role extends Model
         'description',
     ];
 
+    // Cung cấp trạng thái và thao tác cho dữ liệu theo nghiệp vụ của hàm.
     public function users()
     {
         return $this->hasMany(User::class, 'role_id');

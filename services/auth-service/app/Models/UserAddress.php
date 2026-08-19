@@ -29,6 +29,7 @@ class UserAddress extends Model
         'updated_at' => 'datetime',
     ];
 
+    // Cung cấp trạng thái và thao tác cho dữ liệu theo nghiệp vụ của hàm.
     public function user()
     {
         return $this->belongsTo(User::class, 'user_id');

@@ -26,6 +26,7 @@ class ProductImage extends Model
         'is_thumbnail' => 'boolean',
     ];
 
+    // Xây dựng hoặc chuyển đổi hình ảnh url.
     public static function resolveImageUrl(?string $value): ?string
     {
         if (! $value) {
@@ -51,16 +52,19 @@ class ProductImage extends Model
         return $appUrl.'/storage/'.$imagePath;
     }
 
+    // Lấy hình ảnh url thuộc tính.
     public function getImageUrlAttribute(?string $value): ?string
     {
         return self::resolveImageUrl($value);
     }
 
+    // Thực hiện sản phẩm.
     public function product()
     {
         return $this->belongsTo(Product::class);
     }
 
+    // Thực hiện biến thể.
     public function variant()
     {
         return $this->belongsTo(ProductVariant::class, 'product_variant_id');

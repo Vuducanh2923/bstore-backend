@@ -161,6 +161,7 @@ test('home banners alias under banners path reads the json config', function () 
         ->assertJsonPath('data.hero_right_bottom', []);
 });
 
+// Tạo hoặc lưu trang chủ banner bảng.
 function createHomeBannerTable(): void
 {
     Schema::connection('bstore_catalog')->create('banners', function (Blueprint $table) {

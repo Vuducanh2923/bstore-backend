@@ -423,7 +423,7 @@ return [
                         'schema' => ['$ref' => '#/components/schemas/ErrorResponse'],
                         'example' => [
                             'success' => false,
-                            'message' => 'Gateway khong tim thay service phu hop',
+                            'message' => 'Gateway không tìm thấy dịch vụ phù hợp',
                         ],
                     ],
                 ],
@@ -435,7 +435,7 @@ return [
                         'schema' => ['$ref' => '#/components/schemas/ErrorResponse'],
                         'example' => [
                             'success' => false,
-                            'message' => 'Service catalog khong kha dung',
+                            'message' => 'Dịch vụ catalog không khả dụng',
                         ],
                     ],
                 ],
@@ -500,7 +500,7 @@ return [
                 'type' => 'object',
                 'properties' => [
                     'success' => ['type' => 'boolean', 'example' => true],
-                    'message' => ['type' => 'string', 'example' => 'Success'],
+                    'message' => ['type' => 'string', 'example' => 'Thành công.'],
                     'data' => [
                         'type' => 'array',
                         'items' => ['type' => 'object', 'additionalProperties' => true],
@@ -519,7 +519,7 @@ return [
             'ValidationErrorResponse' => [
                 'type' => 'object',
                 'properties' => [
-                    'message' => ['type' => 'string', 'example' => 'The given data was invalid.'],
+                    'message' => ['type' => 'string', 'example' => 'Dữ liệu đã cung cấp không hợp lệ.'],
                     'errors' => [
                         'type' => 'object',
                         'additionalProperties' => [

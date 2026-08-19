@@ -15,6 +15,7 @@ class RefundService
 
     private const MAX_PER_PAGE = 100;
 
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(
         private readonly UserDirectoryService $users,
         private readonly PaymentRefundService $payments,
@@ -22,6 +23,7 @@ class RefundService
         private readonly OrderNotificationService $notifications,
     ) {}
 
+    // Thực hiện có phân trang.
     public function paginated(array $filters, array $actor): LengthAwarePaginator
     {
         $actor = $this->users->actor($actor);
@@ -30,7 +32,7 @@ class RefundService
         if ($actor['role'] === 'CUSTOMER') {
             $query->where('customer_id', $actor['id']);
         } elseif (! in_array($actor['role'], ['ADMIN', 'STAFF'], true)) {
-            throw new AuthorizationException('Khong co quyen xem yeu cau hoan tien');
+            throw new AuthorizationException('Không có quyền xem yêu cầu hoàn tiền');
         }
 
         if (! empty($filters['status'])) {
@@ -43,6 +45,7 @@ class RefundService
         return $query->orderByDesc('id')->paginate($perPage, ['*'], 'page', $page);
     }
 
+    // Lấy toàn bộ dữ liệu.
     public function find(int $refundId, array $actor): ?RefundRequest
     {
         $refund = RefundRequest::with('order')->find($refundId);
@@ -56,12 +59,13 @@ class RefundService
         return $refund;
     }
 
+    // Tạo hoặc lưu dữ liệu theo nghiệp vụ của hàm.
     public function create(array $data, array $actor): RefundRequest
     {
         $actor = $this->users->actor($actor);
 
         if ($actor['role'] !== 'CUSTOMER') {
-            throw new AuthorizationException('Chi khach hang moi duoc gui yeu cau hoan tien');
+            throw new AuthorizationException('Chỉ khách hàng mới được gửi yêu cầu hoàn tiền');
         }
 
         return DB::connection('bstore_order')->transaction(function () use ($data, $actor) {
@@ -71,19 +75,19 @@ class RefundService
 
             if (! $order) {
                 throw ValidationException::withMessages([
-                    'order_id' => ['Khong tim thay don hang cua khach hang'],
+                    'order_id' => ['Không tìm thấy đơn hàng của khách hàng'],
                 ]);
             }
 
             if (strtolower((string) $order->payment_status) !== 'paid' || strtolower((string) $order->status) !== Order::STATUS_DELIVERED) {
                 throw ValidationException::withMessages([
-                    'order_id' => ['Chi don hang da giao va da thanh toan moi duoc yeu cau hoan tien'],
+                    'order_id' => ['Chỉ đơn hàng đã giao và đã thanh toán mới được yêu cầu hoàn tiền'],
                 ]);
             }
 
             if (RefundRequest::query()->where('order_id', $order->id)->exists()) {
                 throw ValidationException::withMessages([
-                    'order_id' => ['Don hang da co yeu cau hoan tien'],
+                    'order_id' => ['Đơn hàng đã có yêu cầu hoàn tiền'],
                 ]);
             }
 
@@ -91,7 +95,7 @@ class RefundService
 
             if ($amount <= 0 || $amount > (float) $order->final_amount) {
                 throw ValidationException::withMessages([
-                    'amount' => ['So tien hoan phai lon hon 0 va khong vuot qua tong tien don hang'],
+                    'amount' => ['Số tiền hoàn phải lớn hơn 0 và không vượt quá tổng tiền đơn hàng'],
                 ]);
             }
 
@@ -119,7 +123,7 @@ class RefundService
                 userId: (int) $order->user_id,
                 orderId: (int) $order->id,
                 type: 'refund_requested',
-                message: 'Yeu cau hoan tien da duoc gui.',
+                message: 'Yêu cầu hoàn tiền đã được gửi.',
                 data: ['refund_id' => $refund->id],
             );
 
@@ -127,16 +131,19 @@ class RefundService
         });
     }
 
+    // Cập nhật dữ liệu theo nghiệp vụ của hàm.
     public function approve(int $refundId, array $actor, ?string $note = null): ?RefundRequest
     {
         return $this->transition($refundId, $actor, RefundRequest::STATUS_APPROVED, $note);
     }
 
+    // Cập nhật dữ liệu theo nghiệp vụ của hàm.
     public function reject(int $refundId, array $actor, ?string $note = null): ?RefundRequest
     {
         return $this->transition($refundId, $actor, RefundRequest::STATUS_REJECTED, $note);
     }
 
+    // Thực hiện mark refunding.
     public function markRefunding(int $refundId, array $actor, ?string $note = null): ?RefundRequest
     {
         $actor = $this->users->actor($actor);
@@ -155,7 +162,7 @@ class RefundService
 
             if (! in_array($refund->status, [RefundRequest::STATUS_APPROVED, RefundRequest::STATUS_REFUNDING], true)) {
                 throw ValidationException::withMessages([
-                    'status' => ['Chi yeu cau Approved hoac Refunding moi duoc gui toi nha cung cap'],
+                    'status' => ['Chỉ yêu cầu Approved hoặc Refunding mới được gửi tới nhà cung cấp'],
                 ]);
             }
 
@@ -214,6 +221,7 @@ class RefundService
         return $refund;
     }
 
+    // Thực hiện complete.
     public function complete(int $refundId, array $actor, array $data): ?RefundRequest
     {
         $actor = $this->users->actor($actor);
@@ -227,7 +235,7 @@ class RefundService
 
         if (! $this->isCashOnDelivery($refund->order)) {
             throw ValidationException::withMessages([
-                'status' => ['Hoan tien online chi hoan tat theo ket qua tu Payment Service'],
+                'status' => ['Hoàn tiền trực tuyến chỉ hoàn tất theo kết quả từ Dịch vụ thanh toán'],
             ]);
         }
 
@@ -235,7 +243,7 @@ class RefundService
 
         if (! in_array($method, ['cod', 'cash', 'manual', 'bank_transfer'], true)) {
             throw ValidationException::withMessages([
-                'refund_method' => ['Phuong thuc hoan tien COD khong hop le'],
+                'refund_method' => ['Phương thức hoàn tiền COD không hợp lệ'],
             ]);
         }
 
@@ -248,6 +256,7 @@ class RefundService
         return $refund;
     }
 
+    // Thực hiện chuyển thành chuỗi.
     public function serialize(RefundRequest $refund): array
     {
         return [
@@ -267,6 +276,7 @@ class RefundService
         ];
     }
 
+    // Thực hiện chuyển thành chuỗi many.
     public function serializeMany(iterable $refunds): array
     {
         return collect($refunds)
@@ -275,6 +285,7 @@ class RefundService
             ->all();
     }
 
+    // Thực hiện chuyển trạng thái.
     private function transition(int $refundId, array $actor, string $nextStatus, ?string $note): ?RefundRequest
     {
         $refund = DB::connection('bstore_order')->transaction(function () use ($refundId, $actor, $nextStatus, $note) {
@@ -326,6 +337,7 @@ class RefundService
         return $refund;
     }
 
+    // Thực hiện finalize.
     private function finalize(int $refundId, array $actor, array $data): ?RefundRequest
     {
         return DB::connection('bstore_order')->transaction(function () use ($refundId, $actor, $data) {
@@ -343,7 +355,7 @@ class RefundService
 
             if (! in_array($refund->status, [RefundRequest::STATUS_APPROVED, RefundRequest::STATUS_REFUNDING], true)) {
                 throw ValidationException::withMessages([
-                    'status' => ['Chi yeu cau Approved hoac Refunding moi duoc hoan tat'],
+                    'status' => ['Chỉ yêu cầu Approved hoặc Refunding mới được hoàn tất'],
                 ]);
             }
 
@@ -388,6 +400,7 @@ class RefundService
         });
     }
 
+    // Gửi hoặc phát dữ liệu theo nghiệp vụ của hàm.
     private function notify(RefundRequest $refund): void
     {
         $this->notifications->create(
@@ -399,6 +412,7 @@ class RefundService
         );
     }
 
+    // Kiểm tra cash on delivery.
     private function isCashOnDelivery(?Order $order): bool
     {
         return $order !== null && in_array(strtolower((string) $order->payment_method), [
@@ -408,6 +422,7 @@ class RefundService
         ], true);
     }
 
+    // Kiểm tra hoàn tiền chuyển trạng thái.
     private function ensureRefundTransition(string $currentStatus, string $nextStatus): void
     {
         $allowed = [
@@ -426,22 +441,24 @@ class RefundService
 
         if (! in_array($nextStatus, $allowed[$currentStatus] ?? [], true)) {
             throw ValidationException::withMessages([
-                'status' => ['Trang thai yeu cau hoan tien khong hop le'],
+                'status' => ['Trạng thái yêu cầu hoàn tiền không hợp lệ'],
             ]);
         }
     }
 
+    // Kiểm tra can view.
     private function ensureCanView(RefundRequest $refund, array $actor): void
     {
         if ($actor['role'] === 'CUSTOMER' && (int) $refund->customer_id !== (int) $actor['id']) {
-            throw new AuthorizationException('Khong co quyen xem yeu cau hoan tien nay');
+            throw new AuthorizationException('Không có quyền xem yêu cầu hoàn tiền này');
         }
 
         if (! in_array($actor['role'], ['CUSTOMER', 'ADMIN', 'STAFF'], true)) {
-            throw new AuthorizationException('Khong co quyen xem yeu cau hoan tien');
+            throw new AuthorizationException('Không có quyền xem yêu cầu hoàn tiền');
         }
     }
 
+    // Kiểm tra can handle.
     private function ensureCanHandle(RefundRequest $refund, array $actor): void
     {
         if ($actor['role'] === 'ADMIN') {
@@ -449,24 +466,25 @@ class RefundService
         }
 
         if ($actor['role'] !== 'STAFF') {
-            throw new AuthorizationException('Khong co quyen xu ly yeu cau hoan tien');
+            throw new AuthorizationException('Không có quyền xử lý yêu cầu hoàn tiền');
         }
 
         $assignedStaffId = (int) ($refund->order?->getAttribute('assigned_staff_id') ?? 0);
 
         if ($assignedStaffId <= 0 || $assignedStaffId !== (int) $actor['id']) {
-            throw new AuthorizationException('Chi nhan vien phu trach don hang moi duoc xu ly hoan tien');
+            throw new AuthorizationException('Chỉ nhân viên phụ trách đơn hàng mới được xử lý hoàn tiền');
         }
     }
 
+    // Thực hiện thông báo cho trạng thái.
     private function messageForStatus(string $status): string
     {
         return match ($status) {
-            RefundRequest::STATUS_APPROVED => 'Yeu cau hoan tien da duoc duyet.',
-            RefundRequest::STATUS_REJECTED => 'Yeu cau hoan tien da bi tu choi.',
-            RefundRequest::STATUS_REFUNDING => 'Yeu cau hoan tien dang duoc xu ly.',
-            RefundRequest::STATUS_REFUNDED => 'Yeu cau hoan tien da hoan tat.',
-            default => 'Yeu cau hoan tien da duoc cap nhat.',
+            RefundRequest::STATUS_APPROVED => 'Yêu cầu hoàn tiền đã được duyệt.',
+            RefundRequest::STATUS_REJECTED => 'Yêu cầu hoàn tiền đã bị từ chối.',
+            RefundRequest::STATUS_REFUNDING => 'Yêu cầu hoàn tiền đang được xử lý.',
+            RefundRequest::STATUS_REFUNDED => 'Yêu cầu hoàn tiền đã hoàn tất.',
+            default => 'Yêu cầu hoàn tiền đã được cập nhật.',
         };
     }
 }

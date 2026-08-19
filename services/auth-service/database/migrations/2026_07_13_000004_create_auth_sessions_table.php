@@ -9,6 +9,7 @@ return new class extends Migration
 {
     private const CONNECTION = 'bstore_auth';
 
+    // Áp dụng thay đổi cấu trúc cơ sở dữ liệu.
     public function up(): void
     {
         $database = DB::connection(self::CONNECTION);
@@ -51,11 +52,13 @@ return new class extends Migration
         }
     }
 
+    // Hoàn tác thay đổi cấu trúc cơ sở dữ liệu.
     public function down(): void
     {
         Schema::connection(self::CONNECTION)->dropIfExists('auth_sessions');
     }
 
+    // Cung cấp trạng thái và thao tác cho id cột type.
     private function userIdColumnType(): string
     {
         $database = DB::connection(self::CONNECTION);
@@ -71,6 +74,7 @@ return new class extends Migration
         return (string) ($column?->column_type ?: 'bigint unsigned');
     }
 
+    // Thực hiện khóa ngoại tồn tại.
     private function foreignExists(): bool
     {
         $database = DB::connection(self::CONNECTION);

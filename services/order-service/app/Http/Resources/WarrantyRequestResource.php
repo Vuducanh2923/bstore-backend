@@ -7,6 +7,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class WarrantyRequestResource extends JsonResource
 {
+
+    // Thực hiện cho mảng.
     public function toArray(Request $request): array
     {
         $order = $this->whenLoaded('order');

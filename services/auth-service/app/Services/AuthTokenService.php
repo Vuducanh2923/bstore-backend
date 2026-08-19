@@ -14,6 +14,7 @@ class AuthTokenService
 {
     private const ALG = 'HS256';
 
+    // Thực hiện issue.
     public function issue(User $user): array
     {
         $this->key();
@@ -45,6 +46,7 @@ class AuthTokenService
         return $this->issue($user)['token'];
     }
 
+    // Làm mới hoặc đặt lại dữ liệu theo nghiệp vụ của hàm.
     public function refresh(string $refreshToken): array
     {
         if ($refreshToken === '') {
@@ -91,6 +93,7 @@ class AuthTokenService
         });
     }
 
+    // Cung cấp trạng thái và thao tác cho từ yêu cầu.
     public function userFromRequest(Request $request): ?User
     {
         $token = $request->bearerToken();
@@ -102,6 +105,7 @@ class AuthTokenService
         return $this->validateAccessToken($token)['user'] ?? null;
     }
 
+    // Kiểm tra access token.
     public function validateAccessToken(string $token): ?array
     {
         $claims = $this->decode($token);
@@ -144,6 +148,7 @@ class AuthTokenService
         ];
     }
 
+    // Xóa hoặc hủy access token.
     public function revokeAccessToken(string $token): bool
     {
         $claims = $this->decode($token, false);
@@ -166,6 +171,7 @@ class AuthTokenService
             ->update(['revoked_at' => Carbon::now()]) === 1;
     }
 
+    // Xóa hoặc hủy refresh token.
     public function revokeRefreshToken(string $refreshToken): bool
     {
         if ($refreshToken === '') {
@@ -178,6 +184,7 @@ class AuthTokenService
             ->update(['revoked_at' => Carbon::now()]) === 1;
     }
 
+    // Xóa hoặc hủy all cho người dùng.
     public function revokeAllForUser(User|int $user): int
     {
         $userId = $user instanceof User ? (int) $user->id : $user;
@@ -188,6 +195,7 @@ class AuthTokenService
             ->update(['revoked_at' => Carbon::now()]);
     }
 
+    // Thực hiện credentials.
     private function credentials(User $user, AuthSession $session, string $refreshToken, Carbon $now): array
     {
         $expiresIn = $this->accessTtlSeconds();
@@ -209,6 +217,7 @@ class AuthTokenService
         ];
     }
 
+    // Thực hiện mã hóa.
     private function encode(array $payload): string
     {
         $header = [
@@ -226,6 +235,7 @@ class AuthTokenService
         return implode('.', $segments);
     }
 
+    // Thực hiện giải mã.
     private function decode(string $token, bool $validateLifetime = true): ?array
     {
         $segments = explode('.', $token);
@@ -263,6 +273,7 @@ class AuthTokenService
         return $decodedPayload;
     }
 
+    // Thực hiện json giải mã.
     private function jsonDecode(string $segment): ?array
     {
         $json = base64_decode($this->base64UrlDecode($segment), true);
@@ -276,11 +287,13 @@ class AuthTokenService
         return is_array($decoded) ? $decoded : null;
     }
 
+    // Thực hiện chữ ký.
     private function signature(string $header, string $payload): string
     {
         return $this->base64UrlEncode(hash_hmac('sha256', "{$header}.{$payload}", $this->key(), true));
     }
 
+    // Thực hiện khóa.
     private function key(): string
     {
         $configured = config('auth.token_key');
@@ -308,31 +321,37 @@ class AuthTokenService
         return $key;
     }
 
+    // Thực hiện random token.
     private function randomToken(): string
     {
         return $this->base64UrlEncode(random_bytes(64));
     }
 
+    // Làm mới hoặc đặt lại mã băm.
     private function refreshHash(string $refreshToken): string
     {
         return hash('sha256', $refreshToken);
     }
 
+    // Thực hiện access ttl seconds.
     private function accessTtlSeconds(): int
     {
         return max(1, (int) config('auth.access_token_ttl', 15)) * 60;
     }
 
+    // Làm mới hoặc đặt lại ttl minutes.
     private function refreshTtlMinutes(): int
     {
         return max(1, (int) config('auth.refresh_token_ttl', 43200));
     }
 
+    // Thực hiện base64 url mã hóa.
     private function base64UrlEncode(string $value): string
     {
         return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
     }
 
+    // Thực hiện base64 url giải mã.
     private function base64UrlDecode(string $value): string
     {
         $base64 = strtr($value, '-_', '+/');

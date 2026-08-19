@@ -12,20 +12,24 @@ use Throwable;
 
 class OrderNotificationService
 {
+
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(private readonly CustomerEmailClient $customers) {}
 
+    // Gửi hoặc phát created.
     public function sendCreated(Order $order): void
     {
         $this->create(
             userId: (int) $order->user_id,
             orderId: (int) $order->id,
             type: 'order_created',
-            message: "Don hang {$order->order_code} da duoc tao thanh cong.",
+            message: "Đơn hàng {$order->order_code} đã được tạo thành công.",
         );
 
         $this->send($order, 'created');
     }
 
+    // Gửi hoặc phát trạng thái updated.
     public function sendStatusUpdated(Order $order): void
     {
         $this->create(
@@ -39,6 +43,7 @@ class OrderNotificationService
         $this->send($order, 'status_updated');
     }
 
+    // Tạo hoặc lưu dữ liệu theo nghiệp vụ của hàm.
     public function create(
         ?int $userId,
         ?int $orderId,
@@ -70,11 +75,37 @@ class OrderNotificationService
         }
     }
 
+    // Gửi hoặc phát dữ liệu theo nghiệp vụ của hàm.
     private function send(Order $order, string $eventType): void
     {
         $order = $order->fresh(['items']) ?? $order->loadMissing('items');
-        $recipient = $this->recipientEmail($order);
+        $payload = $this->orderPayload($order);
+        $explicitRecipient = filter_var($order->receiver_email, FILTER_VALIDATE_EMAIL)
+            ? (string) $order->receiver_email
+            : null;
 
+        // SMTP với queue sync sẽ chặn response tạo đơn; defer cả lookup email và gửi mail.
+        if ((string) config('queue.default') === 'sync') {
+            dispatch(function () use ($eventType, $explicitRecipient, $order, $payload): void {
+                $recipient = $explicitRecipient ?: $this->customers->emailForUser((int) $order->user_id);
+                $this->sendEmail($recipient, $order, $eventType, $payload);
+            })->afterResponse();
+
+            return;
+        }
+
+        $recipient = $explicitRecipient ?: $this->recipientEmail($order);
+        $this->sendEmail($recipient, $order, $eventType, $payload, true);
+    }
+
+    // Gửi email xác nhận hoặc cập nhật đơn hàng.
+    private function sendEmail(
+        ?string $recipient,
+        Order $order,
+        string $eventType,
+        array $payload,
+        bool $queue = false,
+    ): void {
         if (! $recipient) {
             Log::info('Skipped order notification email because recipient email is missing.', [
                 'order_id' => $order->id,
@@ -85,7 +116,13 @@ class OrderNotificationService
         }
 
         try {
-            Mail::to($recipient)->queue(new OrderNotificationMail($this->orderPayload($order), $eventType));
+            $mailable = new OrderNotificationMail($payload, $eventType);
+
+            if ($queue) {
+                Mail::to($recipient)->queue($mailable);
+            } else {
+                Mail::to($recipient)->send($mailable);
+            }
         } catch (Throwable $exception) {
             Log::error('Could not send order notification email.', [
                 'order_id' => $order->id,
@@ -96,6 +133,7 @@ class OrderNotificationService
         }
     }
 
+    // Thực hiện recipient email.
     private function recipientEmail(Order $order): ?string
     {
         if (filter_var($order->receiver_email, FILTER_VALIDATE_EMAIL)) {
@@ -105,6 +143,7 @@ class OrderNotificationService
         return $this->customers->emailForUser((int) $order->user_id);
     }
 
+    // Thực hiện đơn hàng dữ liệu gửi.
     private function orderPayload(Order $order): array
     {
         return [
@@ -126,22 +165,24 @@ class OrderNotificationService
         ];
     }
 
+    // Thực hiện trạng thái thông báo.
     private function statusMessage(Order $order): string
     {
         if ($order->cancel_request_status === Order::CANCEL_REQUEST_PENDING) {
-            return 'Yeu cau huy don dang cho xu ly.';
+            return 'Yêu cầu hủy đơn đang chờ xử lý.';
         }
 
         return match ($order->status) {
-            Order::STATUS_PROCESSING => "Don hang da duoc nhan vien {$order->assigned_staff_name} tiep nhan.",
-            Order::STATUS_SHIPPING => 'Don hang dang duoc van chuyen.',
-            Order::STATUS_DELIVERED => 'Don hang da giao thanh cong.',
-            Order::STATUS_COMPLETED => 'Don hang da hoan tat.',
-            Order::STATUS_CANCELLED => 'Yeu cau huy don da duoc chap nhan.',
-            default => "Don hang da duoc cap nhat sang trang thai {$order->status}.",
+            Order::STATUS_PROCESSING => "Đơn hàng đã được nhân viên {$order->assigned_staff_name} tiếp nhận.",
+            Order::STATUS_SHIPPING => 'Đơn hàng đang được vận chuyển.',
+            Order::STATUS_DELIVERED => 'Đơn hàng đã giao thành công.',
+            Order::STATUS_COMPLETED => 'Đơn hàng đã hoàn tất.',
+            Order::STATUS_CANCELLED => 'Yêu cầu hủy đơn đã được chap nhan.',
+            default => "Đơn hàng đã được cập nhật sang trạng thái {$order->status}.",
         };
     }
 
+    // Thực hiện notifications bảng tồn tại.
     private function notificationsTableExists(): bool
     {
         try {

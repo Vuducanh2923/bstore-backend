@@ -8,6 +8,7 @@ return new class extends Migration
 {
     private const CONNECTION = 'bstore_catalog';
 
+    // Áp dụng thay đổi cấu trúc cơ sở dữ liệu.
     public function up(): void
     {
         if (! Schema::connection(self::CONNECTION)->hasTable('inventory_reservations')) {
@@ -36,6 +37,7 @@ return new class extends Migration
         }
     }
 
+    // Hoàn tác thay đổi cấu trúc cơ sở dữ liệu.
     public function down(): void
     {
         if (

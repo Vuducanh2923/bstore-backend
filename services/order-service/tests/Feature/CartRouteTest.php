@@ -65,6 +65,41 @@ test('cart detail route returns a cart with items', function () {
         ->assertJsonCount(1, 'data.items');
 });
 
+test('cart response includes available inventory for each item', function () {
+    config([
+        'database.connections.bstore_catalog' => [
+            'driver' => 'sqlite',
+            'database' => ':memory:',
+            'prefix' => '',
+            'foreign_key_constraints' => true,
+        ],
+    ]);
+    DB::purge('bstore_catalog');
+
+    Schema::connection('bstore_catalog')->create('inventories', function (Blueprint $table) {
+        $table->id();
+        $table->unsignedBigInteger('product_variant_id')->unique();
+        $table->unsignedInteger('quantity');
+        $table->unsignedInteger('reserved_quantity')->default(0);
+    });
+
+    DB::connection('bstore_catalog')->table('inventories')->insert([
+        'product_variant_id' => 99,
+        'quantity' => 10,
+        'reserved_quantity' => 3,
+    ]);
+
+    $cartId = DB::connection('bstore_order')->table('carts')->insertGetId([
+        'user_id' => 10,
+        'status' => 'active',
+    ]);
+    insertCartItem($cartId, 99);
+
+    $this->withToken(customerAccessToken(10))->getJson("/api/carts/{$cartId}")
+        ->assertOk()
+        ->assertJsonPath('data.items.0.available_quantity', 7);
+});
+
 test('cart detail route returns not found for a missing cart', function () {
     $this->withToken(customerAccessToken(10))->getJson('/api/carts/999')
         ->assertNotFound()
@@ -156,6 +191,7 @@ test('internal cart clear rejects an unpaid order without deleting items', funct
     expect(DB::connection('bstore_order')->table('cart_items')->where('cart_id', $cartId)->count())->toBe(1);
 });
 
+// Thực hiện insert giỏ hàng mặt hàng.
 function insertCartItem(int $cartId, int $variantId): void
 {
     DB::connection('bstore_order')->table('cart_items')->insert([

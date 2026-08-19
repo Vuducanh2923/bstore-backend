@@ -31,13 +31,16 @@ class UserManagementService
         'status',
     ];
 
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(private readonly AuthTokenService $tokens) {}
 
+    // Thực hiện nhân viên.
     public function staff(array $filters = []): LengthAwarePaginator
     {
         return $this->usersByRole(User::ROLE_STAFF, $filters);
     }
 
+    // Thực hiện customers.
     public function customers(array $filters = []): LengthAwarePaginator
     {
         return $this->usersByRole(User::ROLE_CUSTOMER, $filters)
@@ -53,6 +56,7 @@ class UserManagementService
             ]);
     }
 
+    // Tạo hoặc lưu nhân viên.
     public function createStaff(array $data): User
     {
         $data = $this->normalizeName($data);
@@ -70,16 +74,19 @@ class UserManagementService
         return $user->refresh()->load('role');
     }
 
+    // Thực hiện khách hàng.
     public function customer(int $id): ?User
     {
         return $this->userByRole($id, User::ROLE_CUSTOMER)?->load(['role', 'addresses']);
     }
 
+    // Cập nhật khách hàng trạng thái.
     public function updateCustomerStatus(int $id, string $status): ?User
     {
         return $this->updateStatusByRole($id, User::ROLE_CUSTOMER, $status);
     }
 
+    // Cập nhật nhân viên.
     public function updateStaff(int $id, array $data): ?User
     {
         $staff = $this->userByRole($id, User::ROLE_STAFF);
@@ -105,11 +112,13 @@ class UserManagementService
         return $staff->refresh()->load('role');
     }
 
+    // Cập nhật nhân viên trạng thái.
     public function updateStaffStatus(int $id, string $status): ?User
     {
         return $this->updateStatusByRole($id, User::ROLE_STAFF, $status);
     }
 
+    // Cập nhật vai trò.
     public function updateRole(User $actor, User $user, string $requestedRole): User
     {
         $role = $this->role(strtoupper($requestedRole));
@@ -125,16 +134,19 @@ class UserManagementService
         return $user->refresh()->load('role');
     }
 
+    // Xóa hoặc hủy nhân viên.
     public function deleteStaff(int $id): bool
     {
         return $this->deleteByRole($id, User::ROLE_STAFF);
     }
 
+    // Xóa hoặc hủy khách hàng.
     public function deleteCustomer(int $id): bool
     {
         return $this->deleteByRole($id, User::ROLE_CUSTOMER);
     }
 
+    // Cung cấp trạng thái và thao tác cho bởi vai trò.
     private function usersByRole(string $role, array $filters = []): LengthAwarePaginator
     {
         $query = User::query()
@@ -161,6 +173,7 @@ class UserManagementService
             ->paginate($this->perPage($filters), ['*'], 'page', max(1, (int) ($filters['page'] ?? 1)));
     }
 
+    // Cung cấp trạng thái và thao tác cho bởi vai trò.
     private function userByRole(int $id, string $role): ?User
     {
         return User::query()
@@ -168,6 +181,7 @@ class UserManagementService
             ->find($id);
     }
 
+    // Cập nhật trạng thái bởi vai trò.
     private function updateStatusByRole(int $id, string $role, string $status): ?User
     {
         $user = $this->userByRole($id, $role);
@@ -185,6 +199,7 @@ class UserManagementService
         return $user->refresh()->load('role');
     }
 
+    // Xóa hoặc hủy bởi vai trò.
     private function deleteByRole(int $id, string $role): bool
     {
         $user = User::query()
@@ -198,6 +213,7 @@ class UserManagementService
         return (bool) $user->delete();
     }
 
+    // Chuẩn hóa tên.
     private function normalizeName(array $data): array
     {
         if (isset($data['name']) && empty($data['full_name'])) {
@@ -209,30 +225,34 @@ class UserManagementService
         return $data;
     }
 
+    // Thực hiện vai trò.
     private function role(string $name): Role
     {
         return Role::query()->findOrFail($this->roleId($name));
     }
 
+    // Thực hiện phân quyền vai trò thay đổi.
     private function authorizeRoleChange(User $actor, User $user): void
     {
         $actor->loadMissing('role');
         $user->loadMissing('role');
 
         if ($actor->is($user) && strtoupper((string) $user->role?->name) === User::ROLE_ADMIN) {
-            throw new AuthorizationException('Admin khong duoc tu ha quyen');
+            throw new AuthorizationException('Quản trị viên không được tự hạ quyền');
         }
 
         if (strtoupper((string) $user->role?->name) === User::ROLE_ADMIN && $this->adminCount() <= 1) {
-            throw new AuthorizationException('Khong duoc ha quyen admin cuoi cung');
+            throw new AuthorizationException('Không được hạ quyền quản trị viên cuối cùng');
         }
     }
 
+    // Thực hiện quản trị count.
     private function adminCount(): int
     {
         return User::where('role_id', $this->roleId(User::ROLE_ADMIN))->count();
     }
 
+    // Thực hiện vai trò id.
     private function roleId(string $name): int
     {
         $role = strtoupper($name);
@@ -247,6 +267,7 @@ class UserManagementService
         );
     }
 
+    // Thực hiện per trang.
     private function perPage(array $filters): int
     {
         return min(

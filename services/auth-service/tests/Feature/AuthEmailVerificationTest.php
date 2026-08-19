@@ -65,11 +65,12 @@ beforeEach(function () {
 
     DB::connection('bstore_auth')->table('roles')->insert([
         ['id' => 1, 'name' => User::ROLE_ADMIN, 'description' => 'Quan tri vien'],
-        ['id' => 2, 'name' => User::ROLE_STAFF, 'description' => 'Nhan vien'],
-        ['id' => 3, 'name' => User::ROLE_CUSTOMER, 'description' => 'Khach hang'],
+        ['id' => 2, 'name' => User::ROLE_STAFF, 'description' => 'Nhân viên'],
+        ['id' => 3, 'name' => User::ROLE_CUSTOMER, 'description' => 'Khách hàng'],
     ]);
 });
 
+// Tạo hoặc lưu xác thực email verification người dùng.
 function createAuthEmailVerificationUser(array $overrides = []): User
 {
     $user = new User;

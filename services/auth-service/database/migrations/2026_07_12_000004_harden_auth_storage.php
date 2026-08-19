@@ -9,6 +9,7 @@ return new class extends Migration
 {
     private const CONNECTION = 'bstore_auth';
 
+    // Áp dụng thay đổi cấu trúc cơ sở dữ liệu.
     public function up(): void
     {
         $db = DB::connection(self::CONNECTION);
@@ -52,11 +53,13 @@ return new class extends Migration
         $this->addForeign('user_addresses', 'user_id', 'users', 'cascade');
     }
 
+    // Hoàn tác thay đổi cấu trúc cơ sở dữ liệu.
     public function down(): void
     {
         // Engine conversion and integrity cleanup are intentionally irreversible.
     }
 
+    // Tạo hoặc lưu duy nhất.
     private function addUnique(string $table, array $columns, string $name): void
     {
         if (! $this->hasColumns($table, $columns) || $this->indexExists($table, $name)) {
@@ -66,6 +69,7 @@ return new class extends Migration
         Schema::connection(self::CONNECTION)->table($table, fn (Blueprint $blueprint) => $blueprint->unique($columns, $name));
     }
 
+    // Tạo hoặc lưu khóa ngoại.
     private function addForeign(string $table, string $column, string $parent, string $onDelete): void
     {
         $name = "{$table}_{$column}_foreign";
@@ -81,6 +85,7 @@ return new class extends Migration
         });
     }
 
+    // Kiểm tra columns.
     private function hasColumns(string $table, array $columns): bool
     {
         $schema = Schema::connection(self::CONNECTION);
@@ -88,6 +93,7 @@ return new class extends Migration
         return $schema->hasTable($table) && collect($columns)->every(fn ($column) => $schema->hasColumn($table, $column));
     }
 
+    // Lấy tồn tại.
     private function indexExists(string $table, string $name): bool
     {
         $db = DB::connection(self::CONNECTION);
@@ -96,6 +102,7 @@ return new class extends Migration
             ->where('TABLE_SCHEMA', $db->getDatabaseName())->where('TABLE_NAME', $table)->where('INDEX_NAME', $name)->exists();
     }
 
+    // Thực hiện khóa ngoại tồn tại.
     private function foreignExists(string $table, string $name): bool
     {
         $db = DB::connection(self::CONNECTION);

@@ -9,17 +9,21 @@ use Illuminate\Http\Request;
 
 class CartController extends Controller
 {
+
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(private readonly CartService $cartService) {}
 
+    // Lấy toàn bộ dữ liệu.
     public function index(Request $request): JsonResponse
     {
         return response()->json([
             'success' => true,
-            'message' => 'Lay gio hang thanh cong',
+            'message' => 'Lấy giỏ hàng thành công',
             'data' => $this->cartService->forUser($this->authenticatedUserId($request)),
         ]);
     }
 
+    // Lấy toàn bộ dữ liệu.
     public function show(Request $request, int|string $id): JsonResponse
     {
         $cart = $this->cartService->findForUser(
@@ -30,7 +34,7 @@ class CartController extends Controller
         if (! $cart) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay gio hang',
+                'message' => 'Không tìm thấy giỏ hàng',
             ], 404);
         }
 
@@ -40,6 +44,7 @@ class CartController extends Controller
         ]);
     }
 
+    // Làm mới hoặc đặt lại cho paid đơn hàng.
     public function clearForPaidOrder(int|string $orderId): JsonResponse
     {
         $result = $this->cartService->clearForPaidOrder((int) $orderId);
@@ -47,7 +52,7 @@ class CartController extends Controller
         if (! $result['order_found']) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay don hang de xoa gio hang',
+                'message' => 'Không tìm thấy đơn hàng để xóa giỏ hàng',
                 'data' => $result,
             ], 404);
         }
@@ -55,18 +60,19 @@ class CartController extends Controller
         if (! $result['paid']) {
             return response()->json([
                 'success' => false,
-                'message' => 'Chi duoc xoa gio hang cua don da thanh toan',
+                'message' => 'Chỉ được xóa giỏ hàng của đơn đã thanh toán',
                 'data' => $result,
             ], 409);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Da xoa san pham trong gio hang sau khi thanh toan thanh cong',
+            'message' => 'Đã xóa sản phẩm trong giỏ hàng sau khi thanh toán thành công',
             'data' => $result,
         ]);
     }
 
+    // Tạo hoặc lưu dữ liệu theo nghiệp vụ của hàm.
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -82,11 +88,12 @@ class CartController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Tao gio hang thanh cong',
+            'message' => 'Tạo giỏ hàng thành công',
             'data' => $cart,
         ], 201);
     }
 
+    // Tạo hoặc lưu mặt hàng.
     public function storeItem(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -98,11 +105,12 @@ class CartController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Them san pham vao gio hang thanh cong',
+            'message' => 'Thêm sản phẩm vào giỏ hàng thành công',
             'data' => $item,
         ], 201);
     }
 
+    // Cập nhật mặt hàng.
     public function updateItem(Request $request, int|string $id): JsonResponse
     {
         $data = $request->validate([
@@ -117,35 +125,37 @@ class CartController extends Controller
         if (! $item) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay san pham trong gio hang',
+                'message' => 'Không tìm thấy sản phẩm trong giỏ hàng',
                 'data' => null,
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Cap nhat gio hang thanh cong',
+            'message' => 'Cập nhật giỏ hàng thành công',
             'data' => $item,
         ]);
     }
 
+    // Xóa hoặc hủy mặt hàng.
     public function destroyItem(Request $request, int|string $id): JsonResponse
     {
         if (! $this->cartService->deleteItem($this->authenticatedUserId($request), (int) $id)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay san pham trong gio hang',
+                'message' => 'Không tìm thấy sản phẩm trong giỏ hàng',
                 'data' => null,
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Xoa san pham khoi gio hang thanh cong',
+            'message' => 'Xóa sản phẩm khỏi giỏ hàng thành công',
             'data' => null,
         ]);
     }
 
+    // Thực hiện authenticated người dùng id.
     private function authenticatedUserId(Request $request): int
     {
         return (int) data_get($request->attributes->get('auth_user'), 'id');

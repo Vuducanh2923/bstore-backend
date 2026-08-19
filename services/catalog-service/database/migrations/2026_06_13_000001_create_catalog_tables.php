@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+
+    // Áp dụng thay đổi cấu trúc cơ sở dữ liệu.
     public function up(): void
     {
         Schema::create('brands', function (Blueprint $table) {
@@ -103,6 +105,7 @@ return new class extends Migration
         });
     }
 
+    // Hoàn tác thay đổi cấu trúc cơ sở dữ liệu.
     public function down(): void
     {
         Schema::dropIfExists('inventory_transactions');

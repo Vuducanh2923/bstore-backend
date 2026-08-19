@@ -12,12 +12,14 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class PaymentStatusClient
 {
+
+    // Thực hiện synchronize.
     public function synchronize(Order $order, string $status): array
     {
         $baseUrl = rtrim((string) config('services.payment.url'), '/');
 
         if ($baseUrl === '' || (string) config('services.internal.token') === '') {
-            throw new HttpException(503, 'Dich vu thanh toan chua duoc cau hinh an toan');
+            throw new HttpException(503, 'Dịch vụ thanh toán chưa được cấu hình an toàn');
         }
 
         try {
@@ -33,12 +35,12 @@ class PaymentStatusClient
                 'error' => $exception->getMessage(),
             ]);
 
-            throw new HttpException(503, 'Khong the ket noi dich vu thanh toan', $exception);
+            throw new HttpException(503, 'Không thể kết nối dịch vụ thanh toán', $exception);
         }
 
         if ($response->status() === 422) {
             throw ValidationException::withMessages([
-                'payment_status' => [(string) ($response->json('message') ?: 'Trang thai thanh toan khong hop le')],
+                'payment_status' => [(string) ($response->json('message') ?: 'Trạng thái thanh toán không hợp lệ')],
             ]);
         }
 
@@ -50,18 +52,19 @@ class PaymentStatusClient
                 'body' => $response->json(),
             ]);
 
-            throw new HttpException(502, 'Dich vu thanh toan khong the cap nhat trang thai');
+            throw new HttpException(502, 'Dịch vụ thanh toán không thể cập nhật trạng thái');
         }
 
         $data = (array) $response->json('data');
 
         if (strtolower((string) ($data['status'] ?? '')) !== $status) {
-            throw new HttpException(502, 'Dich vu thanh toan tra ve trang thai khong dong bo');
+            throw new HttpException(502, 'Dịch vụ thanh toán trả về trạng thái không đồng bộ');
         }
 
         return $data;
     }
 
+    // Thực hiện yêu cầu.
     private function request(): PendingRequest
     {
         return Http::acceptJson()

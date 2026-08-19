@@ -21,6 +21,7 @@ class Cart extends Model
         'user_id' => 'integer',
     ];
 
+    // Thực hiện mặt hàng.
     public function items()
     {
         return $this->hasMany(CartItem::class);

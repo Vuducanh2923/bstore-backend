@@ -27,6 +27,7 @@ class PaymentTransaction extends Model
         'response_data' => 'array',
     ];
 
+    // Thực hiện thanh toán.
     public function payment()
     {
         return $this->belongsTo(Payment::class);

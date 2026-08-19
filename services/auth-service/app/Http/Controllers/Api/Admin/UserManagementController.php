@@ -17,18 +17,21 @@ use RuntimeException;
 
 class UserManagementController extends Controller
 {
+
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(
         private readonly UserManagementService $users,
         private readonly CustomerOrderClient $orders,
     ) {}
 
+    // Thực hiện nhân viên.
     public function staff(Request $request): JsonResponse
     {
         $staff = $this->users->staff($request->only(['page', 'limit', 'per_page', 'search', 'keyword', 'status']));
 
         return response()->json([
             'success' => true,
-            'message' => 'Lay danh sach nhan vien thanh cong',
+            'message' => 'Lấy danh sách nhân viên thành công',
             'data' => $staff->items(),
             'pagination' => [
                 'page' => $staff->currentPage(),
@@ -39,13 +42,14 @@ class UserManagementController extends Controller
         ]);
     }
 
+    // Thực hiện customers.
     public function customers(Request $request): JsonResponse
     {
         $customers = $this->users->customers($request->only(['page', 'limit', 'per_page', 'search', 'keyword', 'status']));
 
         return response()->json([
             'success' => true,
-            'message' => 'Lay danh sach khach hang thanh cong',
+            'message' => 'Lấy danh sách khách hàng thành công',
             'data' => $customers->items(),
             'pagination' => [
                 'page' => $customers->currentPage(),
@@ -56,6 +60,7 @@ class UserManagementController extends Controller
         ]);
     }
 
+    // Lấy khách hàng.
     public function showCustomer(int|string $id): JsonResponse
     {
         $customer = $this->users->customer((int) $id);
@@ -63,7 +68,7 @@ class UserManagementController extends Controller
         if (! $customer) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay khach hang',
+                'message' => 'Không tìm thấy khách hàng',
                 'data' => null,
             ], 404);
         }
@@ -80,7 +85,7 @@ class UserManagementController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Lay chi tiet khach hang thanh cong',
+            'message' => 'Lấy chi tiết khách hàng thành công',
             'data' => [
                 'customer' => $this->customerProfile($customer),
                 'addresses' => $customer->addresses,
@@ -89,6 +94,7 @@ class UserManagementController extends Controller
         ]);
     }
 
+    // Cập nhật khách hàng trạng thái.
     public function updateCustomerStatus(UpdateUserStatusRequest $request, int|string $id): JsonResponse
     {
         $customer = $this->users->updateCustomerStatus((int) $id, $request->validated('status'));
@@ -96,29 +102,31 @@ class UserManagementController extends Controller
         if (! $customer) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay khach hang',
+                'message' => 'Không tìm thấy khách hàng',
                 'data' => null,
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Cap nhat trang thai khach hang thanh cong',
+            'message' => 'Cập nhật trạng thái khách hàng thành công',
             'data' => $this->customerProfile($customer),
         ]);
     }
 
+    // Tạo hoặc lưu nhân viên.
     public function storeStaff(StoreStaffRequest $request): JsonResponse
     {
         $data = $request->validated();
 
         return response()->json([
             'success' => true,
-            'message' => 'Tao nhan vien thanh cong',
+            'message' => 'Tạo nhân viên thành công',
             'data' => $this->users->createStaff($data),
         ], 201);
     }
 
+    // Cập nhật nhân viên.
     public function updateStaff(UpdateStaffRequest $request, int|string $id): JsonResponse
     {
         $staff = $this->users->updateStaff((int) $id, $request->validated());
@@ -126,18 +134,19 @@ class UserManagementController extends Controller
         if (! $staff) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay nhan vien',
+                'message' => 'Không tìm thấy nhân viên',
                 'data' => null,
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Cap nhat nhan vien thanh cong',
+            'message' => 'Cập nhật nhân viên thành công',
             'data' => $staff,
         ]);
     }
 
+    // Cập nhật nhân viên trạng thái.
     public function updateStaffStatus(UpdateUserStatusRequest $request, int|string $id): JsonResponse
     {
         $staff = $this->users->updateStaffStatus((int) $id, $request->validated('status'));
@@ -145,18 +154,19 @@ class UserManagementController extends Controller
         if (! $staff) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay nhan vien',
+                'message' => 'Không tìm thấy nhân viên',
                 'data' => null,
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Cap nhat trang thai nhan vien thanh cong',
+            'message' => 'Cập nhật trạng thái nhân viên thành công',
             'data' => $staff,
         ]);
     }
 
+    // Cập nhật vai trò.
     public function updateRole(Request $request, int|string $id): JsonResponse
     {
         $request->merge([
@@ -172,7 +182,7 @@ class UserManagementController extends Controller
         if (! $user) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay nguoi dung',
+                'message' => 'Không tìm thấy người dùng',
                 'data' => null,
             ], 404);
         }
@@ -189,45 +199,48 @@ class UserManagementController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Cap nhat vai tro thanh cong',
+            'message' => 'Cập nhật vai trò thành công',
             'data' => $user,
         ]);
     }
 
+    // Xóa hoặc hủy nhân viên.
     public function destroyStaff(int|string $id): JsonResponse
     {
         if (! $this->users->deleteStaff((int) $id)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay nhan vien',
+                'message' => 'Không tìm thấy nhân viên',
                 'data' => null,
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Xoa nhan vien thanh cong',
+            'message' => 'Xóa nhân viên thành công',
             'data' => null,
         ]);
     }
 
+    // Xóa hoặc hủy khách hàng.
     public function destroyCustomer(int|string $id): JsonResponse
     {
         if (! $this->users->deleteCustomer((int) $id)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay khach hang',
+                'message' => 'Không tìm thấy khách hàng',
                 'data' => null,
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Xoa khach hang thanh cong',
+            'message' => 'Xóa khách hàng thành công',
             'data' => null,
         ]);
     }
 
+    // Thực hiện khách hàng hồ sơ.
     private function customerProfile(User $customer): array
     {
         return [

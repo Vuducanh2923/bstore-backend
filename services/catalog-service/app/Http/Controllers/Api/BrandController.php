@@ -10,11 +10,14 @@ use Illuminate\Http\JsonResponse;
 
 class BrandController extends Controller
 {
+
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(
         private readonly BrandService $brandService,
         private readonly CatalogCache $cache,
     ) {}
 
+    // Lấy toàn bộ dữ liệu.
     public function index(): JsonResponse
     {
         $brands = $this->cache->remember(

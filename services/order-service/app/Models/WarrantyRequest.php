@@ -65,11 +65,13 @@ class WarrantyRequest extends Model
         'warranty_end_date' => 'date',
     ];
 
+    // Thực hiện đơn hàng.
     public function order()
     {
         return $this->belongsTo(Order::class);
     }
 
+    // Thực hiện đơn hàng mặt hàng.
     public function orderItem()
     {
         return $this->belongsTo(OrderItem::class);

@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+
+    // Áp dụng thay đổi cấu trúc cơ sở dữ liệu.
     public function up(): void
     {
         Schema::table('orders', function (Blueprint $table): void {
@@ -60,6 +62,7 @@ return new class extends Migration
         });
     }
 
+    // Hoàn tác thay đổi cấu trúc cơ sở dữ liệu.
     public function down(): void
     {
         Schema::table('warranty_requests', function (Blueprint $table): void {

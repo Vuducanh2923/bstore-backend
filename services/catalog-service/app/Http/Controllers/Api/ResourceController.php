@@ -35,8 +35,10 @@ class ResourceController extends Controller
         'warranty_policies' => ['model' => WarrantyPolicy::class],
     ];
 
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(private readonly CatalogCache $cache) {}
 
+    // Lấy toàn bộ dữ liệu.
     public function index(Request $request): JsonResponse
     {
         [$modelClass, $relations] = $this->resolve($request);
@@ -67,6 +69,7 @@ class ResourceController extends Controller
         ]);
     }
 
+    // Lấy toàn bộ dữ liệu.
     public function show(Request $request, int|string $id): JsonResponse
     {
         [$modelClass, $relations] = $this->resolve($request);
@@ -81,7 +84,7 @@ class ResourceController extends Controller
         if (! $record) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay du lieu',
+                'message' => 'Không tìm thấy dữ liệu',
             ], 404);
         }
 
@@ -91,6 +94,7 @@ class ResourceController extends Controller
         ]);
     }
 
+    // Tạo hoặc lưu dữ liệu theo nghiệp vụ của hàm.
     public function store(Request $request): JsonResponse
     {
         [$modelClass, $relations, $resource] = $this->resolve($request);
@@ -100,11 +104,12 @@ class ResourceController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Tao du lieu thanh cong',
+            'message' => 'Tạo dữ liệu thành công',
             'data' => $this->fresh($record, $relations),
         ], 201);
     }
 
+    // Cập nhật dữ liệu theo nghiệp vụ của hàm.
     public function update(Request $request, int|string $id): JsonResponse
     {
         [$modelClass, $relations, $resource] = $this->resolve($request);
@@ -113,7 +118,7 @@ class ResourceController extends Controller
         if (! $record) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay du lieu',
+                'message' => 'Không tìm thấy dữ liệu',
             ], 404);
         }
 
@@ -123,11 +128,12 @@ class ResourceController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Cap nhat du lieu thanh cong',
+            'message' => 'Cập nhật dữ liệu thành công',
             'data' => $this->fresh($record, $relations),
         ]);
     }
 
+    // Xóa hoặc hủy dữ liệu theo nghiệp vụ của hàm.
     public function destroy(Request $request, int|string $id): JsonResponse
     {
         [$modelClass,, $resource] = $this->resolve($request);
@@ -136,7 +142,7 @@ class ResourceController extends Controller
         if (! $record) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay du lieu',
+                'message' => 'Không tìm thấy dữ liệu',
             ], 404);
         }
 
@@ -145,16 +151,17 @@ class ResourceController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Xoa du lieu thanh cong',
+            'message' => 'Xóa dữ liệu thành công',
         ]);
     }
 
+    // Xây dựng hoặc chuyển đổi dữ liệu theo nghiệp vụ của hàm.
     private function resolve(Request $request): array
     {
         $resource = (string) $request->route('resource');
         $config = self::RESOURCES[$resource] ?? null;
 
-        abort_if(! $config, 404, 'Resource khong duoc ho tro');
+        abort_if(! $config, 404, 'Tài nguyên không được hỗ trợ');
 
         return [
             $config['model'],
@@ -163,6 +170,7 @@ class ResourceController extends Controller
         ];
     }
 
+    // Thực hiện dữ liệu gửi.
     private function payload(Request $request, Model $model, string $resource): array
     {
         $payload = collect($request->all())
@@ -180,11 +188,13 @@ class ResourceController extends Controller
         return $payload;
     }
 
+    // Thực hiện fresh.
     private function fresh(Model $record, array $relations): Model
     {
         return $record->fresh($relations) ?? $record;
     }
 
+    // Thực hiện bump công khai danh mục sản phẩm bộ nhớ đệm.
     private function bumpPublicCatalogCache(string $resource): void
     {
         if (in_array($resource, ['banners', 'brands', 'categories', 'products'], true)) {

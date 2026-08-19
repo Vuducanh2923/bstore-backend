@@ -36,6 +36,7 @@ class Banner extends Model
         'status' => 'boolean',
     ];
 
+    // Lấy hình ảnh url thuộc tính.
     public function getImageUrlAttribute(?string $value): ?string
     {
         if (! $value) {

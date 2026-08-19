@@ -29,6 +29,7 @@ class OrderHistory extends Model
         'created_at' => 'datetime',
     ];
 
+    // Thực hiện đơn hàng.
     public function order()
     {
         return $this->belongsTo(Order::class);

@@ -14,11 +14,14 @@ use Illuminate\Validation\Rule;
 
 class ProductController extends Controller
 {
+
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(
         private readonly ProductService $productService,
         private readonly CatalogCache $cache,
     ) {}
 
+    // Lấy toàn bộ dữ liệu.
     public function index(Request $request): JsonResponse
     {
         $filters = $request->only([
@@ -44,6 +47,7 @@ class ProductController extends Controller
         ]);
     }
 
+    // Thực hiện sale.
     public function sale(Request $request): JsonResponse
     {
         $payload = $this->paginatedProductPayload(
@@ -68,6 +72,7 @@ class ProductController extends Controller
         ]);
     }
 
+    // Thực hiện new sản phẩm.
     public function newProducts(Request $request): JsonResponse
     {
         $payload = $this->paginatedProductPayload(
@@ -92,6 +97,7 @@ class ProductController extends Controller
         ]);
     }
 
+    // Lấy toàn bộ dữ liệu.
     public function show(string $slug): JsonResponse
     {
         $product = $this->productService->findBySlug($slug);
@@ -100,7 +106,7 @@ class ProductController extends Controller
         if ($payload === null) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay san pham',
+                'message' => 'Không tìm thấy sản phẩm',
             ], 404);
         }
 
@@ -110,6 +116,7 @@ class ProductController extends Controller
         ]);
     }
 
+    // Lấy bởi id.
     public function showById(int $id): JsonResponse
     {
         $product = $this->productService->findById($id);
@@ -118,7 +125,7 @@ class ProductController extends Controller
         if ($payload === null) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay san pham',
+                'message' => 'Không tìm thấy sản phẩm',
             ], 404);
         }
 
@@ -128,6 +135,7 @@ class ProductController extends Controller
         ]);
     }
 
+    // Tạo hoặc lưu dữ liệu theo nghiệp vụ của hàm.
     public function store(Request $request): JsonResponse
     {
         $product = $this->productService->create($this->validatedData($request));
@@ -135,11 +143,12 @@ class ProductController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Tao san pham thanh cong',
+            'message' => 'Tạo sản phẩm thành công',
             'data' => ProductResource::make($product),
         ], 201);
     }
 
+    // Cập nhật dữ liệu theo nghiệp vụ của hàm.
     public function update(Request $request, int $id): JsonResponse
     {
         $product = Product::find($id);
@@ -147,7 +156,7 @@ class ProductController extends Controller
         if (! $product) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay san pham',
+                'message' => 'Không tìm thấy sản phẩm',
             ], 404);
         }
 
@@ -160,11 +169,12 @@ class ProductController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Cap nhat san pham thanh cong',
+            'message' => 'Cập nhật sản phẩm thành công',
             'data' => ProductResource::make($product),
         ]);
     }
 
+    // Xóa hoặc hủy dữ liệu theo nghiệp vụ của hàm.
     public function destroy(int $id): JsonResponse
     {
         $product = Product::find($id);
@@ -172,7 +182,7 @@ class ProductController extends Controller
         if (! $product) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay san pham',
+                'message' => 'Không tìm thấy sản phẩm',
             ], 404);
         }
 
@@ -185,10 +195,11 @@ class ProductController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Xoa san pham thanh cong',
+            'message' => 'Xóa sản phẩm thành công',
         ]);
     }
 
+    // Thực hiện có phân trang sản phẩm dữ liệu gửi.
     private function paginatedProductPayload($products): array
     {
         return [
@@ -202,6 +213,7 @@ class ProductController extends Controller
         ];
     }
 
+    // Thực hiện validated dữ liệu.
     private function validatedData(Request $request, bool $creating = true, ?int $productId = null): array
     {
         $nameRule = $creating ? 'required' : 'sometimes';
@@ -228,7 +240,13 @@ class ProductController extends Controller
             'variants.*.storage' => ['nullable', 'string', 'max:50'],
             'variants.*.specifications' => ['nullable', 'array'],
             'variants.*.price' => ['required_with:variants', 'numeric', 'min:0'],
-            'variants.*.sku' => ['required_with:variants', 'string', 'max:191', 'distinct'],
+            'variants.*.sku' => [
+                'required_with:variants',
+                'string',
+                'max:191',
+                'distinct',
+                ...($creating ? [Rule::unique('bstore_catalog.product_variants', 'sku')] : []),
+            ],
             'variants.*.barcode' => ['nullable', 'string', 'max:191'],
             'variants.*.status' => ['nullable', 'string', 'max:20'],
             'variants.*.quantity' => ['sometimes', 'integer', 'min:0'],
@@ -252,6 +270,7 @@ class ProductController extends Controller
         ]);
     }
 
+    // Thực hiện tồn kho conflict.
     private function inventoryConflict(InventoryReservationException $exception): JsonResponse
     {
         return response()->json([

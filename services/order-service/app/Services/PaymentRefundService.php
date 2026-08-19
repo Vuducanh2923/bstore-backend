@@ -11,12 +11,14 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class PaymentRefundService
 {
+
+    // Thực hiện hoàn tiền.
     public function refund(int $orderId, int $refundId, float $amount, string $reason, int $requestedBy): string
     {
         $baseUrl = rtrim((string) config('services.payment.url'), '/');
 
         if ($baseUrl === '' || (string) config('services.internal.token') === '') {
-            throw new HttpException(503, 'Dich vu thanh toan chua duoc cau hinh an toan');
+            throw new HttpException(503, 'Dịch vụ thanh toán chưa được cấu hình an toàn');
         }
 
         try {
@@ -32,12 +34,12 @@ class PaymentRefundService
                 'error' => $exception->getMessage(),
             ]);
 
-            throw new HttpException(503, 'Khong the ket noi dich vu thanh toan', $exception);
+            throw new HttpException(503, 'Không thể kết nối dịch vụ thanh toán', $exception);
         }
 
         if ($response->status() === 409 || $response->status() === 422) {
             throw ValidationException::withMessages([
-                'refund' => [(string) ($response->json('message') ?: 'Nha cung cap tu choi hoan tien')],
+                'refund' => [(string) ($response->json('message') ?: 'Nhà cung cấp từ chối hoàn tiền')],
             ]);
         }
 
@@ -48,18 +50,19 @@ class PaymentRefundService
                 'body' => $response->json(),
             ]);
 
-            throw new HttpException(502, 'Dich vu thanh toan khong the hoan tien');
+            throw new HttpException(502, 'Dịch vụ thanh toán không thể hoàn tiền');
         }
 
         $status = strtolower((string) $response->json('data.status'));
 
         if (! in_array($status, ['refunded', 'processing'], true)) {
-            throw new HttpException(502, 'Dich vu thanh toan tra ve trang thai hoan tien khong hop le');
+            throw new HttpException(502, 'Dịch vụ thanh toán trả về trạng thái hoàn tiền không hợp lệ');
         }
 
         return $status;
     }
 
+    // Thực hiện yêu cầu.
     private function request(): PendingRequest
     {
         return Http::acceptJson()

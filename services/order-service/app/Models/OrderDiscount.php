@@ -25,11 +25,13 @@ class OrderDiscount extends Model
         'discount_amount' => 'decimal:2',
     ];
 
+    // Thực hiện đơn hàng.
     public function order()
     {
         return $this->belongsTo(Order::class);
     }
 
+    // Thực hiện mã giảm giá.
     public function discount()
     {
         return $this->belongsTo(Discount::class);

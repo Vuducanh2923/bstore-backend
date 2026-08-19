@@ -11,6 +11,8 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class InventoryService
 {
+
+    // Thực hiện reserve.
     public function reserve(string $reference, array $items): array
     {
         return $this->send('post', '/api/internal/inventory/reservations', [
@@ -22,21 +24,25 @@ class InventoryService
         ], $reference);
     }
 
+    // Thực hiện commit.
     public function commit(string $reference): array
     {
         return $this->action($reference, 'commit');
     }
 
+    // Thực hiện release.
     public function release(string $reference): array
     {
         return $this->action($reference, 'release');
     }
 
+    // Thực hiện restore.
     public function restore(string $reference): array
     {
         return $this->action($reference, 'restore');
     }
 
+    // Thực hiện action.
     private function action(string $reference, string $action): array
     {
         return $this->send(
@@ -47,12 +53,13 @@ class InventoryService
         );
     }
 
+    // Gửi hoặc phát dữ liệu theo nghiệp vụ của hàm.
     private function send(string $method, string $path, array $payload, string $reference): array
     {
         $baseUrl = rtrim((string) config('services.catalog.url'), '/');
 
         if ($baseUrl === '' || (string) config('services.internal.token') === '') {
-            throw new HttpException(503, 'Dich vu ton kho chua duoc cau hinh an toan');
+            throw new HttpException(503, 'Dịch vụ tồn kho chưa được cấu hình an toàn');
         }
 
         try {
@@ -64,12 +71,12 @@ class InventoryService
                 'error' => $exception->getMessage(),
             ]);
 
-            throw new HttpException(503, 'Khong the ket noi dich vu ton kho', $exception);
+            throw new HttpException(503, 'Không thể kết nối dịch vụ tồn kho', $exception);
         }
 
         if ($response->status() === 409 || $response->status() === 422) {
             throw ValidationException::withMessages([
-                'items' => [(string) ($response->json('message') ?: 'Ton kho khong du de xu ly yeu cau')],
+                'items' => [(string) ($response->json('message') ?: 'Tồn kho không đủ để xử lý yêu cầu')],
             ]);
         }
 
@@ -81,18 +88,19 @@ class InventoryService
                 'body' => $response->json(),
             ]);
 
-            throw new HttpException(503, 'Dich vu ton kho khong the xu ly yeu cau');
+            throw new HttpException(503, 'Dịch vụ tồn kho không thể xử lý yêu cầu');
         }
 
         $data = $response->json('data');
 
         if (! is_array($data) || ($data['reference'] ?? null) !== $reference) {
-            throw new HttpException(502, 'Dich vu ton kho tra ve du lieu khong hop le');
+            throw new HttpException(502, 'Dịch vụ tồn kho trả về dữ liệu không hợp lệ');
         }
 
         return $data;
     }
 
+    // Thực hiện yêu cầu.
     private function request(): PendingRequest
     {
         return Http::acceptJson()

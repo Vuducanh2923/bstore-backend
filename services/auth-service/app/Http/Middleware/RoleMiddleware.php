@@ -9,8 +9,11 @@ use Illuminate\Http\Request;
 
 abstract class RoleMiddleware
 {
+
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(private readonly AuthTokenService $tokens) {}
 
+    // Xác định người dùng có quyền gửi yêu cầu hay không.
     protected function authorize(Request $request, Closure $next, array $roles): mixed
     {
         $user = $request->user();
@@ -29,7 +32,7 @@ abstract class RoleMiddleware
         if (! $user->isActive()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Tai khoan da bi vo hieu hoa',
+                'message' => 'Tài khoản đã bị vô hiệu hóa',
                 'data' => null,
             ], 403);
         }

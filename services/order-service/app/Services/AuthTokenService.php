@@ -11,6 +11,7 @@ class AuthTokenService
 {
     private const ALG = 'HS256';
 
+    // Thực hiện generate.
     public function generate(int $userId, string $role = 'CUSTOMER', ?string $email = null): string
     {
         $issuedAt = Carbon::now()->timestamp;
@@ -29,6 +30,7 @@ class AuthTokenService
         ]);
     }
 
+    // Thực hiện dữ liệu gửi từ yêu cầu.
     public function payloadFromRequest(Request $request): ?array
     {
         $token = $request->bearerToken();
@@ -36,6 +38,7 @@ class AuthTokenService
         return $token ? $this->decode($token) : null;
     }
 
+    // Thực hiện mã hóa.
     private function encode(array $payload): string
     {
         $header = [
@@ -53,6 +56,7 @@ class AuthTokenService
         return implode('.', $segments);
     }
 
+    // Thực hiện giải mã.
     private function decode(string $token): ?array
     {
         $segments = explode('.', $token);
@@ -91,6 +95,7 @@ class AuthTokenService
         return $decodedPayload;
     }
 
+    // Thực hiện json giải mã.
     private function jsonDecode(string $segment): ?array
     {
         $json = base64_decode($this->base64UrlDecode($segment), true);
@@ -104,11 +109,13 @@ class AuthTokenService
         return is_array($decoded) ? $decoded : null;
     }
 
+    // Thực hiện chữ ký.
     private function signature(string $header, string $payload): string
     {
         return $this->base64UrlEncode(hash_hmac('sha256', "{$header}.{$payload}", $this->key(), true));
     }
 
+    // Thực hiện khóa.
     private function key(): string
     {
         $key = trim((string) config('auth.token_key'));
@@ -134,11 +141,13 @@ class AuthTokenService
         return $key;
     }
 
+    // Thực hiện base64 url mã hóa.
     private function base64UrlEncode(string $value): string
     {
         return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
     }
 
+    // Thực hiện base64 url giải mã.
     private function base64UrlDecode(string $value): string
     {
         $base64 = strtr($value, '-_', '+/');

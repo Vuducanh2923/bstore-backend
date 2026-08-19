@@ -15,12 +15,14 @@ class ComplaintService
 
     private const MAX_PER_PAGE = 100;
 
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(
         private readonly UserDirectoryService $users,
         private readonly OrderHistoryService $histories,
         private readonly OrderNotificationService $notifications,
     ) {}
 
+    // Thực hiện có phân trang.
     public function paginated(array $filters, array $actor): LengthAwarePaginator
     {
         $actor = $this->users->actor($actor);
@@ -29,7 +31,7 @@ class ComplaintService
         if ($actor['role'] === 'CUSTOMER') {
             $query->where('customer_id', $actor['id']);
         } elseif (! in_array($actor['role'], ['ADMIN', 'STAFF'], true)) {
-            throw new AuthorizationException('Khong co quyen xem khieu nai');
+            throw new AuthorizationException('Không có quyền xem khiếu nại');
         }
 
         if (! empty($filters['status'])) {
@@ -42,6 +44,7 @@ class ComplaintService
         return $query->orderByDesc('id')->paginate($perPage, ['*'], 'page', $page);
     }
 
+    // Lấy toàn bộ dữ liệu.
     public function find(int $complaintId, array $actor): ?Complaint
     {
         $complaint = Complaint::with('order')->find($complaintId);
@@ -55,12 +58,13 @@ class ComplaintService
         return $complaint;
     }
 
+    // Tạo hoặc lưu dữ liệu theo nghiệp vụ của hàm.
     public function create(array $data, array $actor): Complaint
     {
         $actor = $this->users->actor($actor);
 
         if ($actor['role'] !== 'CUSTOMER') {
-            throw new AuthorizationException('Chi khach hang moi duoc gui khieu nai');
+            throw new AuthorizationException('Chỉ khách hàng mới được gửi khiếu nại');
         }
 
         return DB::connection('bstore_order')->transaction(function () use ($data, $actor) {
@@ -70,7 +74,7 @@ class ComplaintService
 
             if (! $order) {
                 throw ValidationException::withMessages([
-                    'order_id' => ['Khong tim thay don hang cua khach hang'],
+                    'order_id' => ['Không tìm thấy đơn hàng của khách hàng'],
                 ]);
             }
 
@@ -101,7 +105,7 @@ class ComplaintService
                 userId: (int) $order->user_id,
                 orderId: (int) $order->id,
                 type: 'complaint_created',
-                message: 'Khieu nai da duoc gui.',
+                message: 'Khiếu nại đã được gửi.',
                 data: ['complaint_id' => $complaint->id],
             );
 
@@ -109,21 +113,25 @@ class ComplaintService
         });
     }
 
+    // Xử lý dữ liệu theo nghiệp vụ của hàm.
     public function process(int $complaintId, array $actor, ?string $reply = null): ?Complaint
     {
         return $this->transition($complaintId, $actor, Complaint::STATUS_PROCESSING, $reply);
     }
 
+    // Xây dựng hoặc chuyển đổi dữ liệu theo nghiệp vụ của hàm.
     public function resolve(int $complaintId, array $actor, ?string $reply = null): ?Complaint
     {
         return $this->transition($complaintId, $actor, Complaint::STATUS_RESOLVED, $reply);
     }
 
+    // Cập nhật dữ liệu theo nghiệp vụ của hàm.
     public function reject(int $complaintId, array $actor, ?string $reply = null): ?Complaint
     {
         return $this->transition($complaintId, $actor, Complaint::STATUS_REJECTED, $reply);
     }
 
+    // Thực hiện chuyển thành chuỗi.
     public function serialize(Complaint $complaint): array
     {
         return [
@@ -143,6 +151,7 @@ class ComplaintService
         ];
     }
 
+    // Thực hiện chuyển thành chuỗi many.
     public function serializeMany(iterable $complaints): array
     {
         return collect($complaints)
@@ -151,6 +160,7 @@ class ComplaintService
             ->all();
     }
 
+    // Thực hiện chuyển trạng thái.
     private function transition(int $complaintId, array $actor, string $nextStatus, ?string $reply): ?Complaint
     {
         $complaint = DB::connection('bstore_order')->transaction(function () use ($complaintId, $actor, $nextStatus, $reply) {
@@ -202,6 +212,7 @@ class ComplaintService
         return $complaint;
     }
 
+    // Kiểm tra khiếu nại chuyển trạng thái.
     private function ensureComplaintTransition(string $currentStatus, string $nextStatus): void
     {
         $allowed = [
@@ -218,22 +229,24 @@ class ComplaintService
 
         if (! in_array($nextStatus, $allowed[$currentStatus] ?? [], true)) {
             throw ValidationException::withMessages([
-                'status' => ['Trang thai khieu nai khong hop le'],
+                'status' => ['Trạng thái khiếu nại không hợp lệ'],
             ]);
         }
     }
 
+    // Kiểm tra can view.
     private function ensureCanView(Complaint $complaint, array $actor): void
     {
         if ($actor['role'] === 'CUSTOMER' && (int) $complaint->customer_id !== (int) $actor['id']) {
-            throw new AuthorizationException('Khong co quyen xem khieu nai nay');
+            throw new AuthorizationException('Không có quyền xem khiếu nại này');
         }
 
         if (! in_array($actor['role'], ['CUSTOMER', 'ADMIN', 'STAFF'], true)) {
-            throw new AuthorizationException('Khong co quyen xem khieu nai');
+            throw new AuthorizationException('Không có quyền xem khiếu nại');
         }
     }
 
+    // Kiểm tra can handle.
     private function ensureCanHandle(Complaint $complaint, array $actor): void
     {
         if ($actor['role'] === 'ADMIN') {
@@ -241,21 +254,22 @@ class ComplaintService
         }
 
         if ($actor['role'] !== 'STAFF') {
-            throw new AuthorizationException('Khong co quyen xu ly khieu nai');
+            throw new AuthorizationException('Không có quyền xử lý khiếu nại');
         }
 
         if ((int) ($complaint->staff_id ?? 0) !== (int) $actor['id']) {
-            throw new AuthorizationException('Chi nhan vien phu trach don hang moi duoc xu ly khieu nai');
+            throw new AuthorizationException('Chỉ nhân viên phụ trách đơn hàng mới được xử lý khiếu nại');
         }
     }
 
+    // Thực hiện thông báo cho trạng thái.
     private function messageForStatus(string $status): string
     {
         return match ($status) {
-            Complaint::STATUS_PROCESSING => 'Khieu nai dang duoc xu ly.',
-            Complaint::STATUS_RESOLVED => 'Khieu nai da duoc giai quyet.',
-            Complaint::STATUS_REJECTED => 'Khieu nai da bi tu choi.',
-            default => 'Khieu nai da duoc cap nhat.',
+            Complaint::STATUS_PROCESSING => 'Khiếu nại đang được xử lý.',
+            Complaint::STATUS_RESOLVED => 'Khiếu nại đã được giải quyết.',
+            Complaint::STATUS_REJECTED => 'Khiếu nại đã bị từ chối.',
+            default => 'Khiếu nại đã được cập nhật.',
         };
     }
 }

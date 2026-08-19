@@ -9,6 +9,7 @@ return new class extends Migration
 {
     private const CONNECTION = 'bstore_order';
 
+    // Áp dụng thay đổi cấu trúc cơ sở dữ liệu.
     public function up(): void
     {
         $schema = Schema::connection(self::CONNECTION);
@@ -77,11 +78,13 @@ return new class extends Migration
         }
     }
 
+    // Hoàn tác thay đổi cấu trúc cơ sở dữ liệu.
     public function down(): void
     {
         // Storage-engine and integrity hardening is intentionally one-way.
     }
 
+    // Thực hiện cleanup legacy dữ liệu.
     private function cleanupLegacyData(): void
     {
         $this->deleteOrphans('cart_items', 'cart_id', 'carts');
@@ -127,6 +130,7 @@ return new class extends Migration
         }
     }
 
+    // Xóa hoặc hủy orphans.
     private function deleteOrphans(string $child, string $foreignKey, string $parent): void
     {
         $schema = Schema::connection(self::CONNECTION);
@@ -145,6 +149,7 @@ return new class extends Migration
             ->delete();
     }
 
+    // Thực hiện null orphans.
     private function nullOrphans(string $child, string $foreignKey, string $parent): void
     {
         $schema = Schema::connection(self::CONNECTION);
@@ -163,6 +168,7 @@ return new class extends Migration
             ->update([$foreignKey => null]);
     }
 
+    // Thực hiện merge duplicate mặt hàng.
     private function mergeDuplicateItems(string $table, array $keys): void
     {
         $schema = Schema::connection(self::CONNECTION);
@@ -208,6 +214,7 @@ return new class extends Migration
         }
     }
 
+    // Thực hiện deduplicate.
     private function deduplicate(string $table, array $keys, ?string $maxColumn = null): void
     {
         $schema = Schema::connection(self::CONNECTION);
@@ -240,6 +247,7 @@ return new class extends Migration
         }
     }
 
+    // Tạo hoặc lưu duy nhất.
     private function addUnique(string $table, array $columns, string $name): void
     {
         $schema = Schema::connection(self::CONNECTION);
@@ -257,6 +265,7 @@ return new class extends Migration
         $schema->table($table, fn (Blueprint $blueprint) => $blueprint->unique($columns, $name));
     }
 
+    // Tạo hoặc lưu khóa ngoại.
     private function addForeign(string $table, string $column, string $parent, string $onDelete): void
     {
         $schema = Schema::connection(self::CONNECTION);
@@ -279,6 +288,7 @@ return new class extends Migration
         });
     }
 
+    // Lấy tồn tại.
     private function indexExists(string $table, string $index): bool
     {
         $connection = DB::connection(self::CONNECTION);
@@ -295,6 +305,7 @@ return new class extends Migration
             ->exists();
     }
 
+    // Thực hiện khóa ngoại tồn tại.
     private function foreignExists(string $table, string $foreign): bool
     {
         $connection = DB::connection(self::CONNECTION);

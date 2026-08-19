@@ -204,10 +204,10 @@ return [
                 'properties' => [
                     'order_id' => [
                         'type' => 'integer',
-                        'description' => 'Order ID do Order Service da tao.',
+                        'description' => 'Mã đơn hàng do Dịch vụ đơn hàng đã tạo.',
                         'example' => 123,
                     ],
-                    'order_info' => ['type' => 'string', 'nullable' => true, 'maxLength' => 255, 'example' => 'Thanh toan don hang 123'],
+                    'order_info' => ['type' => 'string', 'nullable' => true, 'maxLength' => 255, 'example' => 'Thanh toán đơn hàng 123'],
                 ],
             ],
             'VnpayCreateResponse' => [
@@ -334,7 +334,7 @@ return [
                 'type' => 'object',
                 'properties' => [
                     'success' => ['type' => 'boolean', 'example' => true],
-                    'message' => ['type' => 'string', 'example' => 'Xoa du lieu thanh cong'],
+                    'message' => ['type' => 'string', 'example' => 'Xóa dữ liệu thành công'],
                 ],
             ],
             'ErrorResponse' => [
@@ -347,7 +347,7 @@ return [
             'ValidationErrorResponse' => [
                 'type' => 'object',
                 'properties' => [
-                    'message' => ['type' => 'string', 'example' => 'The given data was invalid.'],
+                    'message' => ['type' => 'string', 'example' => 'Dữ liệu đã cung cấp không hợp lệ.'],
                     'errors' => [
                         'type' => 'object',
                         'additionalProperties' => [

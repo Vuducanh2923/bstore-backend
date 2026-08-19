@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+
+    // Áp dụng thay đổi cấu trúc cơ sở dữ liệu.
     public function up(): void
     {
         if (Schema::hasTable('users')) {
@@ -43,6 +45,7 @@ return new class extends Migration
         }
     }
 
+    // Hoàn tác thay đổi cấu trúc cơ sở dữ liệu.
     public function down(): void
     {
         Schema::dropIfExists('user_addresses');
@@ -64,6 +67,7 @@ return new class extends Migration
         }
     }
 
+    // Tạo hoặc lưu người dùng cột.
     private function addUserColumn(string $column, callable $definition): void
     {
         if (! Schema::hasColumn('users', $column)) {

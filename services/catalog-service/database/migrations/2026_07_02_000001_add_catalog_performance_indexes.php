@@ -37,6 +37,7 @@ return new class extends Migration
         ],
     ];
 
+    // Áp dụng thay đổi cấu trúc cơ sở dữ liệu.
     public function up(): void
     {
         foreach (self::INDEXES as $table => $indexes) {
@@ -46,6 +47,7 @@ return new class extends Migration
         }
     }
 
+    // Hoàn tác thay đổi cấu trúc cơ sở dữ liệu.
     public function down(): void
     {
         foreach (self::INDEXES as $table => $indexes) {
@@ -55,6 +57,7 @@ return new class extends Migration
         }
     }
 
+    // Tạo hoặc lưu chỉ mục.
     private function addIndex(string $table, array $columns, string $index): void
     {
         if (! Schema::connection(self::CONNECTION)->hasTable($table) || $this->indexExists($table, $index)) {
@@ -75,6 +78,7 @@ return new class extends Migration
         ));
     }
 
+    // Thực hiện drop chỉ mục.
     private function dropIndex(string $table, string $index): void
     {
         if (! Schema::connection(self::CONNECTION)->hasTable($table) || ! $this->indexExists($table, $index)) {
@@ -90,6 +94,7 @@ return new class extends Migration
         DB::connection(self::CONNECTION)->statement("ALTER TABLE {$table} DROP INDEX {$index}");
     }
 
+    // Lấy tồn tại.
     private function indexExists(string $table, string $index): bool
     {
         $connection = DB::connection(self::CONNECTION);

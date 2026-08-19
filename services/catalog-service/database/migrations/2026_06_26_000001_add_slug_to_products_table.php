@@ -13,6 +13,7 @@ return new class extends Migration
 
     private const TABLE = 'products';
 
+    // Áp dụng thay đổi cấu trúc cơ sở dữ liệu.
     public function up(): void
     {
         if (! Schema::connection(self::CONNECTION)->hasTable(self::TABLE)) {
@@ -42,11 +43,13 @@ return new class extends Migration
         }
     }
 
+    // Hoàn tác thay đổi cấu trúc cơ sở dữ liệu.
     public function down(): void
     {
         //
     }
 
+    // Thực hiện backfill slugs.
     private function backfillSlugs(): void
     {
         $products = DB::connection(self::CONNECTION)
@@ -70,6 +73,7 @@ return new class extends Migration
         }
     }
 
+    // Thực hiện move slugs cho temporary values.
     private function moveSlugsToTemporaryValues(Collection $products): void
     {
         $reservedSlugs = [];
@@ -93,11 +97,13 @@ return new class extends Migration
         }
     }
 
+    // Thực hiện base slug.
     private function baseSlug(string $name): string
     {
         return Str::limit(Str::slug($name) ?: 'product', 191, '');
     }
 
+    // Thực hiện next slug.
     private function nextSlug(string $baseSlug, array $usedSlugs): string
     {
         $slug = $baseSlug;
@@ -112,6 +118,7 @@ return new class extends Migration
         return $slug;
     }
 
+    // Thực hiện next temporary slug.
     private function nextTemporarySlug(int|string $productId, array $reservedSlugs): string
     {
         $baseSlug = Str::limit('__slug_migration_'.$productId, 191, '');
@@ -127,11 +134,13 @@ return new class extends Migration
         return $slug;
     }
 
+    // Chuẩn hóa existing slug.
     private function normalizeExistingSlug(?string $slug): string
     {
         return trim((string) $slug);
     }
 
+    // Xây dựng hoặc chuyển đổi slug not nullable.
     private function makeSlugNotNullable(): void
     {
         if (DB::connection(self::CONNECTION)->getDriverName() !== 'mysql') {
@@ -142,11 +151,13 @@ return new class extends Migration
             ->statement('ALTER TABLE '.self::TABLE.' MODIFY slug VARCHAR(191) NOT NULL');
     }
 
+    // Kiểm tra duy nhất slug chỉ mục.
     private function hasUniqueSlugIndex(): bool
     {
         return $this->uniqueSlugIndexes()->isNotEmpty();
     }
 
+    // Thực hiện duy nhất slug indexes.
     private function uniqueSlugIndexes(): Collection
     {
         $connection = DB::connection(self::CONNECTION);
@@ -158,6 +169,7 @@ return new class extends Migration
         };
     }
 
+    // Thực hiện mysql duy nhất slug indexes.
     private function mysqlUniqueSlugIndexes(): Collection
     {
         $connection = DB::connection(self::CONNECTION);
@@ -179,6 +191,7 @@ return new class extends Migration
             ->keys();
     }
 
+    // Thực hiện sqlite duy nhất slug indexes.
     private function sqliteUniqueSlugIndexes(): Collection
     {
         $indexes = collect(DB::connection(self::CONNECTION)->select("PRAGMA index_list('".self::TABLE."')"));

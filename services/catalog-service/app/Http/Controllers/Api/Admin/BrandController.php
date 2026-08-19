@@ -15,11 +15,14 @@ use Throwable;
 
 class BrandController extends Controller
 {
+
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(
         private readonly BrandService $brandService,
         private readonly CatalogCache $cache,
     ) {}
 
+    // Lấy toàn bộ dữ liệu.
     public function index(Request $request): JsonResponse
     {
         $brands = $this->brandService->adminPaginatedList($request->only([
@@ -44,6 +47,7 @@ class BrandController extends Controller
         ]);
     }
 
+    // Tạo hoặc lưu dữ liệu theo nghiệp vụ của hàm.
     public function store(BrandStoreRequest $request): JsonResponse
     {
         try {
@@ -62,6 +66,7 @@ class BrandController extends Controller
         ], 201);
     }
 
+    // Cập nhật dữ liệu theo nghiệp vụ của hàm.
     public function update(BrandUpdateRequest $request, int $id): JsonResponse
     {
         $brand = Brand::find($id);
@@ -86,6 +91,7 @@ class BrandController extends Controller
         ]);
     }
 
+    // Xóa hoặc hủy dữ liệu theo nghiệp vụ của hàm.
     public function destroy(int $id): JsonResponse
     {
         $brand = Brand::find($id);
@@ -109,6 +115,7 @@ class BrandController extends Controller
         ]);
     }
 
+    // Thực hiện toggle trạng thái.
     public function toggleStatus(int $id): JsonResponse
     {
         $brand = Brand::find($id);
@@ -127,11 +134,13 @@ class BrandController extends Controller
         ]);
     }
 
+    // Thực hiện logo tệp.
     private function logoFile(Request $request): mixed
     {
         return $request->file('logo') ?: $request->file('logo_file');
     }
 
+    // Thực hiện not found.
     private function notFound(): JsonResponse
     {
         return response()->json([
@@ -140,11 +149,12 @@ class BrandController extends Controller
         ], 404);
     }
 
+    // Tải hoặc xuất lỗi.
     private function uploadError(): JsonResponse
     {
         return response()->json([
             'success' => false,
-            'message' => 'Upload logo thất bại',
+            'message' => 'Tải logo thất bại',
         ], 502);
     }
 }

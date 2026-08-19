@@ -54,6 +54,7 @@ class User extends Authenticatable
         'password',
     ];
 
+    // Khai báo kiểu chuyển đổi cho các thuộc tính của model.
     protected function casts(): array
     {
         return [
@@ -65,6 +66,7 @@ class User extends Authenticatable
         ];
     }
 
+    // Thực hiện booted.
     protected static function booted(): void
     {
         static::creating(function (User $user): void {
@@ -77,26 +79,31 @@ class User extends Authenticatable
         });
     }
 
+    // Thực hiện vai trò.
     public function role()
     {
         return $this->belongsTo(Role::class, 'role_id');
     }
 
+    // Thực hiện addresses.
     public function addresses()
     {
         return $this->hasMany(UserAddress::class, 'user_id');
     }
 
+    // Thực hiện xác thực sessions.
     public function authSessions(): HasMany
     {
         return $this->hasMany(AuthSession::class, 'user_id');
     }
 
+    // Kiểm tra đang hoạt động.
     public function isActive(): bool
     {
         return strtolower(trim((string) $this->status)) === 'active';
     }
 
+    // Kiểm tra quản trị.
     public function isAdmin(): bool
     {
         $this->loadMissing('role');
@@ -104,6 +111,7 @@ class User extends Authenticatable
         return strtoupper((string) $this->role?->name) === self::ROLE_ADMIN;
     }
 
+    // Kiểm tra nhân viên.
     public function isStaff(): bool
     {
         $this->loadMissing('role');
@@ -111,6 +119,7 @@ class User extends Authenticatable
         return strtoupper((string) $this->role?->name) === self::ROLE_STAFF;
     }
 
+    // Kiểm tra khách hàng.
     public function isCustomer(): bool
     {
         $this->loadMissing('role');
@@ -118,6 +127,7 @@ class User extends Authenticatable
         return strtoupper((string) $this->role?->name) === self::ROLE_CUSTOMER;
     }
 
+    // Thực hiện assignable roles.
     public static function assignableRoles(): array
     {
         return [

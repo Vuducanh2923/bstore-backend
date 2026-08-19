@@ -13,18 +13,21 @@ class ForgotPasswordOtpMail extends Mailable implements ShouldQueue
 {
     use Queueable, SerializesModels;
 
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(
         public readonly string $otpCode,
         public readonly int $expiresInMinutes = 5,
     ) {}
 
+    // Thực hiện envelope.
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Ma OTP dat lai mat khau BStore',
+            subject: 'Mã OTP đặt lại mật khẩu BStore',
         );
     }
 
+    // Thực hiện content.
     public function content(): Content
     {
         return new Content(
@@ -32,6 +35,7 @@ class ForgotPasswordOtpMail extends Mailable implements ShouldQueue
         );
     }
 
+    // Thực hiện attachments.
     public function attachments(): array
     {
         return [];

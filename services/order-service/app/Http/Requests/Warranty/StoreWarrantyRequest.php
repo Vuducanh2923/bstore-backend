@@ -6,11 +6,14 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class StoreWarrantyRequest extends FormRequest
 {
+
+    // Xác định người dùng có quyền gửi yêu cầu hay không.
     public function authorize(): bool
     {
         return true;
     }
 
+    // Trả về các quy tắc kiểm tra dữ liệu đầu vào.
     public function rules(): array
     {
         return [
@@ -18,7 +21,7 @@ class StoreWarrantyRequest extends FormRequest
             'order_item_id' => ['required', 'integer', 'min:1'],
             'reason' => ['required', 'string', 'max:1000', function ($attribute, $value, $fail): void {
                 if (trim((string) $value) === '') {
-                    $fail('Ly do bao hanh khong duoc chi chua khoang trang');
+                    $fail('Lý do bảo hành không được chỉ chứa khoảng trắng');
                 }
             }],
             'description' => ['nullable', 'string', 'max:5000'],

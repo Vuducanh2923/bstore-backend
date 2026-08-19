@@ -75,11 +75,12 @@ beforeEach(function () {
 
     DB::connection('bstore_auth')->table('roles')->insert([
         ['id' => 1, 'name' => User::ROLE_ADMIN, 'description' => 'Quan tri vien'],
-        ['id' => 2, 'name' => User::ROLE_STAFF, 'description' => 'Nhan vien'],
-        ['id' => 3, 'name' => User::ROLE_CUSTOMER, 'description' => 'Khach hang'],
+        ['id' => 2, 'name' => User::ROLE_STAFF, 'description' => 'Nhân viên'],
+        ['id' => 3, 'name' => User::ROLE_CUSTOMER, 'description' => 'Khách hàng'],
     ]);
 });
 
+// Tạo hoặc lưu xác thực người dùng cho khách hàng tài khoản.
 function createAuthUserForCustomerAccount(string $role, array $overrides = []): User
 {
     static $sequence = 0;
@@ -114,7 +115,7 @@ test('legacy plaintext md5 and sha1 password accounts must reset their password'
         'email' => $user->email,
         'password' => 'secret123',
     ])->assertForbidden()
-        ->assertJsonPath('message', 'Tai khoan su dung mat khau cu. Vui long dat lai mat khau.');
+        ->assertJsonPath('message', 'Tài khoản sử dụng mật khẩu cũ. Vui lòng đặt lại mật khẩu.');
 
     expect($user->fresh()->password)->toBe($storedPassword);
 })->with([

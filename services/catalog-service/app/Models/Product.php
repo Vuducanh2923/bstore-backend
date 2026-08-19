@@ -51,6 +51,7 @@ class Product extends Model
         'is_sale' => 'boolean',
     ];
 
+    // Cung cấp trạng thái và thao tác cho timestamps.
     public function usesTimestamps(): bool
     {
         $cacheKey = spl_object_id($this->getConnection()).':'.$this->getTable();
@@ -61,6 +62,7 @@ class Product extends Model
         );
     }
 
+    // Thực hiện booted.
     protected static function booted(): void
     {
         static::creating(function (Product $product): void {
@@ -74,6 +76,7 @@ class Product extends Model
         });
     }
 
+    // Thực hiện duy nhất slug cho tên.
     public static function uniqueSlugForName(string $name, ?int $ignoreId = null): string
     {
         $baseSlug = Str::slug($name) ?: 'product';
@@ -90,6 +93,7 @@ class Product extends Model
         return $slug;
     }
 
+    // Thực hiện slug tồn tại.
     private static function slugExists(string $slug, ?int $ignoreId = null): bool
     {
         return static::query()
@@ -98,26 +102,31 @@ class Product extends Model
             ->exists();
     }
 
+    // Lấy ảnh đại diện thuộc tính.
     public function getThumbnailAttribute(?string $value): ?string
     {
         return ProductImage::resolveImageUrl($value);
     }
 
+    // Thực hiện danh mục.
     public function category()
     {
         return $this->belongsTo(Category::class);
     }
 
+    // Thực hiện thương hiệu.
     public function brand()
     {
         return $this->belongsTo(Brand::class);
     }
 
+    // Thực hiện variants.
     public function variants()
     {
         return $this->hasMany(ProductVariant::class);
     }
 
+    // Thực hiện inventories.
     public function inventories()
     {
         return $this->hasManyThrough(
@@ -128,16 +137,19 @@ class Product extends Model
         );
     }
 
+    // Thực hiện hình ảnh.
     public function images()
     {
         return $this->hasMany(ProductImage::class);
     }
 
+    // Thực hiện bảo hành policy.
     public function warrantyPolicy()
     {
         return $this->belongsTo(WarrantyPolicy::class);
     }
 
+    // Lấy total số lượng thuộc tính.
     public function getTotalQuantityAttribute(): int
     {
         if (array_key_exists('total_quantity', $this->attributes)) {
@@ -149,6 +161,7 @@ class Product extends Model
             : 0;
     }
 
+    // Lấy total reserved thuộc tính.
     public function getTotalReservedAttribute(): int
     {
         if (array_key_exists('total_reserved', $this->attributes)) {
@@ -160,11 +173,13 @@ class Product extends Model
             : 0;
     }
 
+    // Lấy available số lượng thuộc tính.
     public function getAvailableQuantityAttribute(): int
     {
         return $this->total_quantity - $this->total_reserved;
     }
 
+    // Lấy in stock thuộc tính.
     public function getInStockAttribute(): bool
     {
         return $this->available_quantity > 0;

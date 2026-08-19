@@ -7,6 +7,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class ProductResource extends JsonResource
 {
+
+    // Thực hiện cho mảng.
     public function toArray(Request $request): array
     {
         $discountPercent = $this->discount_percent ?? $this->sale_percent;
@@ -46,6 +48,7 @@ class ProductResource extends JsonResource
         ];
     }
 
+    // Xây dựng hoặc chuyển đổi sale price.
     private function resolveSalePrice(mixed $discountPercent): mixed
     {
         if ($this->sale_price !== null) {

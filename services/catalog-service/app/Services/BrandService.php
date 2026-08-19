@@ -15,8 +15,10 @@ class BrandService
 
     private const MAX_PER_PAGE = 100;
 
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(private readonly CloudinaryService $cloudinaryService) {}
 
+    // Thực hiện quản trị có phân trang danh sách.
     public function adminPaginatedList(array $filters = []): LengthAwarePaginator
     {
         $query = Brand::query()
@@ -47,6 +49,7 @@ class BrandService
         return $query->paginate($perPage, ['*'], 'page', $page);
     }
 
+    // Thực hiện đang hoạt động brands.
     public function activeBrands(): Collection
     {
         return Brand::query()
@@ -56,6 +59,7 @@ class BrandService
             ->get();
     }
 
+    // Tạo hoặc lưu dữ liệu theo nghiệp vụ của hàm.
     public function create(array $data, ?UploadedFile $logoFile = null): Brand
     {
         $payload = $this->payload($data, true, null, $logoFile);
@@ -63,6 +67,7 @@ class BrandService
         return Brand::create($payload)->fresh() ?? Brand::query()->where('slug', $payload['slug'])->firstOrFail();
     }
 
+    // Cập nhật dữ liệu theo nghiệp vụ của hàm.
     public function update(Brand $brand, array $data, ?UploadedFile $logoFile = null): Brand
     {
         $brand->fill($this->payload($data, false, $brand, $logoFile));
@@ -71,6 +76,7 @@ class BrandService
         return $brand->fresh() ?? $brand;
     }
 
+    // Thực hiện toggle trạng thái.
     public function toggleStatus(Brand $brand): Brand
     {
         $brand->status = $brand->status === 'active' ? 'inactive' : 'active';
@@ -79,6 +85,7 @@ class BrandService
         return $brand->fresh() ?? $brand;
     }
 
+    // Xóa hoặc hủy dữ liệu theo nghiệp vụ của hàm.
     public function delete(Brand $brand): bool
     {
         if ($brand->products()->exists()) {
@@ -88,6 +95,7 @@ class BrandService
         return (bool) $brand->delete();
     }
 
+    // Thực hiện dữ liệu gửi.
     private function payload(array $data, bool $creating, ?Brand $brand, ?UploadedFile $logoFile): array
     {
         $payload = [];
@@ -118,6 +126,7 @@ class BrandService
         return $payload;
     }
 
+    // Tạo hoặc lưu logo tệp.
     private function storeLogoFile(UploadedFile $file): string
     {
         if ($this->cloudinaryService->isConfigured()) {
@@ -129,6 +138,7 @@ class BrandService
         return Storage::disk('public')->url($path);
     }
 
+    // Thực hiện duy nhất slug.
     private function uniqueSlug(string $source, ?int $ignoreId = null): string
     {
         $baseSlug = Str::slug($source) ?: 'brand';
@@ -145,6 +155,7 @@ class BrandService
         return $slug;
     }
 
+    // Thực hiện slug tồn tại.
     private function slugExists(string $slug, ?int $ignoreId): bool
     {
         return Brand::query()
@@ -153,6 +164,7 @@ class BrandService
             ->exists();
     }
 
+    // Thực hiện nullable trim.
     private function nullableTrim(mixed $value): ?string
     {
         $value = trim((string) $value);

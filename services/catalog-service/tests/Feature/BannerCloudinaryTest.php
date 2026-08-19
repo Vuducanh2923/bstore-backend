@@ -7,6 +7,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
+// Thực hiện fake banner hình ảnh.
 function fakeBannerImage(): UploadedFile
 {
     return UploadedFile::fake()->createWithContent(

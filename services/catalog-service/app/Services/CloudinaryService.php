@@ -14,23 +14,34 @@ class CloudinaryService
 
     private const PRODUCT_FOLDER = 'bstore/products';
 
+    private const AVATAR_FOLDER = 'bstore/avatars';
+
     private ?Cloudinary $client = null;
 
+    // Tải hoặc xuất banner hình ảnh.
     public function uploadBannerImage(UploadedFile $file): array
     {
         return $this->uploadImage($file, self::BANNER_FOLDER);
     }
 
+    // Tải hoặc xuất thương hiệu logo.
     public function uploadBrandLogo(UploadedFile $file): array
     {
         return $this->uploadImage($file, self::BRAND_FOLDER);
     }
 
+    // Tải hoặc xuất sản phẩm hình ảnh.
     public function uploadProductImage(UploadedFile $file): array
     {
         return $this->uploadImage($file, self::PRODUCT_FOLDER);
     }
 
+    public function uploadAvatarImage(UploadedFile $file): array
+    {
+        return $this->uploadImage($file, self::AVATAR_FOLDER);
+    }
+
+    // Kiểm tra đã cấu hình.
     public function isConfigured(): bool
     {
         $config = config('services.cloudinary', []);
@@ -44,6 +55,7 @@ class CloudinaryService
             && trim((string) ($config['api_secret'] ?? '')) !== '';
     }
 
+    // Xóa hoặc hủy hình ảnh.
     public function deleteImage(?string $publicId): void
     {
         $publicId = trim((string) $publicId);
@@ -64,6 +76,7 @@ class CloudinaryService
         }
     }
 
+    // Tải hoặc xuất hình ảnh.
     private function uploadImage(UploadedFile $file, string $folder): array
     {
         $path = $file->getRealPath();
@@ -93,6 +106,7 @@ class CloudinaryService
         ];
     }
 
+    // Thực hiện client.
     private function client(): Cloudinary
     {
         if ($this->client) {

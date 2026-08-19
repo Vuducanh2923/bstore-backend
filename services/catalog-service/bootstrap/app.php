@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\AdminToken;
+use App\Http\Middleware\CustomerToken;
 use App\Http\Middleware\InternalService;
 use App\Http\Middleware\RequestPerformance;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -26,6 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->append(RequestPerformance::class);
         $middleware->alias([
             'admin.token' => AdminToken::class,
+            'customer.token' => CustomerToken::class,
             'internal.service' => InternalService::class,
         ]);
     })

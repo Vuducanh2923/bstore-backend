@@ -12,8 +12,11 @@ use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
+
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(private readonly AuthTokenService $tokens) {}
 
+    // Lấy toàn bộ dữ liệu.
     public function index(Request $request): JsonResponse
     {
         $perPage = min(100, max(1, (int) $request->query('limit', $request->query('per_page', 15))));
@@ -25,7 +28,7 @@ class UserController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Lay danh sach nguoi dung thanh cong',
+            'message' => 'Lấy danh sách người dùng thành công',
             'data' => $users->items(),
             'pagination' => [
                 'page' => $users->currentPage(),
@@ -36,6 +39,7 @@ class UserController extends Controller
         ]);
     }
 
+    // Cập nhật dữ liệu theo nghiệp vụ của hàm.
     public function update(Request $request, int|string $id): JsonResponse
     {
         $user = User::find((int) $id);
@@ -43,7 +47,7 @@ class UserController extends Controller
         if (! $user) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay nguoi dung',
+                'message' => 'Không tìm thấy người dùng',
                 'data' => null,
             ], 404);
         }
@@ -88,7 +92,7 @@ class UserController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Cap nhat nguoi dung thanh cong',
+            'message' => 'Cập nhật người dùng thành công',
             'data' => $user->fresh('role'),
         ]);
     }

@@ -115,11 +115,13 @@ beforeEach(function () {
     });
 });
 
+// Thực hiện quản trị đơn hàng token cho test.
 function adminOrderTokenForTest(string $role = 'ADMIN'): string
 {
     return app(AuthTokenService::class)->generate(1, $role, 'admin@example.com');
 }
 
+// Thực hiện insert quản trị đơn hàng cho test.
 function insertAdminOrderForTest(array $overrides = []): int
 {
     $id = DB::connection('bstore_order')->table('orders')->insertGetId([
@@ -380,7 +382,7 @@ test('concurrent payment status changes return conflict', function () {
     $this->withToken(adminOrderTokenForTest())
         ->patchJson("/api/admin/orders/{$orderId}/payment-status", ['payment_status' => 'paid'])
         ->assertConflict()
-        ->assertJsonPath('message', 'Trang thai thanh toan da duoc cap nhat boi yeu cau khac.');
+        ->assertJsonPath('message', 'Trạng thái thanh toán đã được cập nhật bởi yêu cầu khác.');
 });
 
 test('a cancelled order cannot be confirmed as paid', function () {

@@ -11,11 +11,14 @@ use Illuminate\Support\Facades\Schema;
 
 class AuthService
 {
+
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(
         private readonly AuthTokenService $tokens,
         private readonly EmailVerificationService $emailVerifications,
     ) {}
 
+    // Tạo hoặc lưu dữ liệu theo nghiệp vụ của hàm.
     public function register(array $data): User
     {
         if (isset($data['name']) && empty($data['full_name'])) {
@@ -46,6 +49,7 @@ class AuthService
         return $user;
     }
 
+    // Thực hiện đăng nhập.
     public function login(string $email, string $password): array
     {
         $user = User::with('role')->where('email', $this->emailVerifications->normalizeEmail($email))->first();
@@ -90,6 +94,7 @@ class AuthService
         return ['status' => 'authenticated', 'user' => $user];
     }
 
+    // Làm mới hoặc đặt lại dữ liệu theo nghiệp vụ của hàm.
     public function refresh(string $refreshToken): array
     {
         $result = $this->tokens->refresh($refreshToken);
@@ -107,6 +112,7 @@ class AuthService
         return ['status' => 'refreshed', 'user' => $user];
     }
 
+    // Thực hiện đăng xuất.
     public function logout(?string $accessToken, ?string $refreshToken): bool
     {
         $revoked = false;
@@ -122,6 +128,7 @@ class AuthService
         return $revoked;
     }
 
+    // Thực hiện xác minh đăng ký otp.
     public function verifyRegisterOtp(string $email, string $otpCode, ?string $ip = null): array
     {
         $result = $this->emailVerifications->verifyOtp($email, $otpCode, EmailVerification::TYPE_REGISTER, $ip);
@@ -153,6 +160,7 @@ class AuthService
             : ['status' => EmailVerificationService::STATUS_INVALID, 'user' => null];
     }
 
+    // Thực hiện resend đăng ký otp.
     public function resendRegisterOtp(string $email, ?string $ip = null): string
     {
         if ($this->emailVerifications->tooManySendAttempts($email, EmailVerification::TYPE_REGISTER, $ip)) {
@@ -175,6 +183,7 @@ class AuthService
         return EmailVerificationService::STATUS_VERIFIED;
     }
 
+    // Thực hiện yêu cầu forgot mật khẩu otp.
     public function requestForgotPasswordOtp(string $email, ?string $ip = null): string
     {
         if ($this->emailVerifications->tooManySendAttempts($email, EmailVerification::TYPE_FORGOT_PASSWORD, $ip)) {
@@ -197,6 +206,7 @@ class AuthService
         return EmailVerificationService::STATUS_VERIFIED;
     }
 
+    // Thực hiện xác minh forgot mật khẩu otp.
     public function verifyForgotPasswordOtp(string $email, string $otpCode, ?string $ip = null): string
     {
         $result = $this->emailVerifications->verifyOtp($email, $otpCode, EmailVerification::TYPE_FORGOT_PASSWORD, $ip);
@@ -208,6 +218,7 @@ class AuthService
         return EmailVerificationService::STATUS_VERIFIED;
     }
 
+    // Làm mới hoặc đặt lại mật khẩu.
     public function resetPassword(string $email, string $otpCode, string $password, ?string $ip = null): string
     {
         $result = $this->emailVerifications->verifyOtp($email, $otpCode, EmailVerification::TYPE_FORGOT_PASSWORD, $ip);
@@ -235,6 +246,7 @@ class AuthService
         });
     }
 
+    // Thực hiện requires email verification.
     private function requiresEmailVerification(User $user): bool
     {
         if (! Schema::connection($user->getConnectionName())->hasColumn($user->getTable(), 'email_verified_at')) {
@@ -246,6 +258,7 @@ class AuthService
         return $user->isCustomer() && ! $user->email_verified_at;
     }
 
+    // Thực hiện mật khẩu khớp.
     private function passwordMatches(string $password, string $storedPassword): bool
     {
         if ($storedPassword === '') {
@@ -255,6 +268,7 @@ class AuthService
         return password_verify($password, $storedPassword);
     }
 
+    // Cung cấp trạng thái và thao tác cho strong mật khẩu mã băm.
     private function usesStrongPasswordHash(string $storedPassword): bool
     {
         return in_array(password_get_info($storedPassword)['algoName'] ?? 'unknown', ['bcrypt', 'argon2id'], true);

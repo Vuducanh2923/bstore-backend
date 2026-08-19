@@ -7,6 +7,8 @@ use Illuminate\Http\Request;
 
 class InternalService
 {
+
+    // Xử lý dữ liệu theo nghiệp vụ của hàm.
     public function handle(Request $request, Closure $next): mixed
     {
         $configuredToken = (string) config('services.internal_service_token');

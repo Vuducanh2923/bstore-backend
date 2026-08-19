@@ -11,6 +11,7 @@ class UserDirectoryService
 {
     private array $profiles = [];
 
+    // Thực hiện hồ sơ.
     public function profile(int $userId): array
     {
         if ($userId <= 0) {
@@ -24,6 +25,7 @@ class UserDirectoryService
         return $this->profiles[$userId] = $this->profileFromAuthService($userId) ?? [];
     }
 
+    // Thực hiện người thực hiện.
     public function actor(array $actor): array
     {
         $profile = $this->profile((int) ($actor['id'] ?? 0));
@@ -37,6 +39,7 @@ class UserDirectoryService
         ];
     }
 
+    // Thực hiện hồ sơ từ xác thực service.
     private function profileFromAuthService(int $userId): ?array
     {
         $baseUrl = rtrim((string) config('services.auth.url'), '/');
@@ -71,6 +74,7 @@ class UserDirectoryService
         ]) : null;
     }
 
+    // Chuẩn hóa hồ sơ.
     private function normalizeProfile(array $data): array
     {
         $id = (int) ($data['id'] ?? 0);
@@ -84,6 +88,7 @@ class UserDirectoryService
         ];
     }
 
+    // Thực hiện yêu cầu.
     private function request(): PendingRequest
     {
         return Http::acceptJson()

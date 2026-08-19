@@ -16,6 +16,7 @@ test('JWT with exp equal to now is expired', function () {
     expect(app(AuthTokenService::class)->payloadFromRequest($request))->toBeNull();
 });
 
+// Thực hiện danh mục sản phẩm boundary JWT.
 function catalogBoundaryJwt(string $key, int $exp): string
 {
     $encode = fn (string $value) => rtrim(strtr(base64_encode($value), '+/', '-_'), '=');

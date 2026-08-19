@@ -14,8 +14,11 @@ use Illuminate\Http\Request;
 
 class WarrantyController extends Controller
 {
+
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(private readonly WarrantyService $warranties) {}
 
+    // Thực hiện khách hàng chỉ mục.
     public function customerIndex(Request $request): JsonResponse
     {
         $page = $this->warranties->customerList(
@@ -26,33 +29,37 @@ class WarrantyController extends Controller
         return $this->listResponse($page, false);
     }
 
+    // Thực hiện khách hàng show.
     public function customerShow(Request $request, int|string $id): JsonResponse
     {
         return $this->detailResponse(
             $this->warranties->customerDetail($this->actorId($request), (int) $id),
-            'Lay chi tiet yeu cau bao hanh thanh cong',
+            'Lấy chi tiết yêu cầu bảo hành thành công',
         );
     }
 
+    // Tạo hoặc lưu dữ liệu theo nghiệp vụ của hàm.
     public function store(StoreWarrantyRequest $request): JsonResponse
     {
         $warranty = $this->warranties->create($this->actorId($request), $request->validated());
 
         return response()->json([
             'success' => true,
-            'message' => 'Gui yeu cau bao hanh thanh cong',
+            'message' => 'Gửi yêu cầu bảo hành thành công',
             'data' => $this->resource($warranty),
         ], 201);
     }
 
+    // Xóa hoặc hủy dữ liệu theo nghiệp vụ của hàm.
     public function cancel(Request $request, int|string $id): JsonResponse
     {
         return $this->detailResponse(
             $this->warranties->cancel($this->actorId($request), (int) $id),
-            'Huy yeu cau bao hanh thanh cong',
+            'Hủy yêu cầu bảo hành thành công',
         );
     }
 
+    // Thực hiện quản trị chỉ mục.
     public function adminIndex(Request $request): JsonResponse
     {
         $request->validate([
@@ -72,46 +79,52 @@ class WarrantyController extends Controller
         );
     }
 
+    // Thực hiện quản trị show.
     public function adminShow(int|string $id): JsonResponse
     {
         return $this->detailResponse(
             $this->warranties->adminDetail((int) $id),
-            'Lay chi tiet yeu cau bao hanh thanh cong',
+            'Lấy chi tiết yêu cầu bảo hành thành công',
         );
     }
 
+    // Cập nhật dữ liệu theo nghiệp vụ của hàm.
     public function approve(WarrantyNoteRequest $request, int|string $id): JsonResponse
     {
         return $this->detailResponse(
             $this->warranties->approve((int) $id, $this->actor($request), $request->validated('processing_note')),
-            'Duyet yeu cau bao hanh thanh cong',
+            'Duyệt yêu cầu bảo hành thành công',
         );
     }
 
+    // Cập nhật dữ liệu theo nghiệp vụ của hàm.
     public function reject(RejectWarrantyRequest $request, int|string $id): JsonResponse
     {
         return $this->detailResponse(
             $this->warranties->reject((int) $id, $this->actor($request), $request->validated('rejection_reason')),
-            'Tu choi yeu cau bao hanh thanh cong',
+            'Từ chối yêu cầu bảo hành thành công',
         );
     }
 
+    // Thực hiện đang xử lý.
     public function processing(WarrantyNoteRequest $request, int|string $id): JsonResponse
     {
         return $this->detailResponse(
             $this->warranties->processing((int) $id, $request->validated('processing_note')),
-            'Chuyen yeu cau sang dang bao hanh thanh cong',
+            'Chuyển yêu cầu sang đang bảo hành thành công',
         );
     }
 
+    // Thực hiện complete.
     public function complete(WarrantyNoteRequest $request, int|string $id): JsonResponse
     {
         return $this->detailResponse(
             $this->warranties->complete((int) $id, $request->validated('processing_note')),
-            'Hoan tat yeu cau bao hanh thanh cong',
+            'Hoàn tất yêu cầu bảo hành thành công',
         );
     }
 
+    // Lấy phản hồi.
     private function listResponse($page, bool $withCustomer): JsonResponse
     {
         $data = collect($page->items())->map(function (WarrantyRequest $warranty) use ($withCustomer): array {
@@ -120,7 +133,7 @@ class WarrantyController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Lay danh sach yeu cau bao hanh thanh cong',
+            'message' => 'Lấy danh sách yêu cầu bảo hành thành công',
             'data' => $data,
             'pagination' => [
                 'page' => $page->currentPage(),
@@ -131,12 +144,13 @@ class WarrantyController extends Controller
         ]);
     }
 
+    // Thực hiện chi tiết phản hồi.
     private function detailResponse(?WarrantyRequest $warranty, string $message): JsonResponse
     {
         if (! $warranty) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay yeu cau bao hanh',
+                'message' => 'Không tìm thấy yêu cầu bảo hành',
                 'errors' => (object) [],
             ], 404);
         }
@@ -148,16 +162,19 @@ class WarrantyController extends Controller
         ]);
     }
 
+    // Thực hiện người thực hiện.
     private function actor(Request $request): array
     {
         return (array) $request->attributes->get('auth_user', []);
     }
 
+    // Thực hiện người thực hiện id.
     private function actorId(Request $request): int
     {
         return (int) ($this->actor($request)['id'] ?? 0);
     }
 
+    // Thực hiện tài nguyên.
     private function resource(WarrantyRequest $warranty): array
     {
         return (new WarrantyRequestResource($warranty))->resolve();

@@ -9,8 +9,11 @@ use Illuminate\Http\Request;
 
 class RefundController extends Controller
 {
+
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(private readonly RefundService $refunds) {}
 
+    // Lấy toàn bộ dữ liệu.
     public function index(Request $request): JsonResponse
     {
         $refunds = $this->refunds->paginated(
@@ -20,7 +23,7 @@ class RefundController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Lay danh sach yeu cau hoan tien thanh cong',
+            'message' => 'Lấy danh sách yêu cầu hoàn tiền thành công',
             'data' => $this->refunds->serializeMany($refunds->items()),
             'pagination' => [
                 'page' => $refunds->currentPage(),
@@ -31,6 +34,7 @@ class RefundController extends Controller
         ]);
     }
 
+    // Lấy toàn bộ dữ liệu.
     public function show(Request $request, int|string $id): JsonResponse
     {
         $refund = $this->refunds->find((int) $id, $this->authenticatedActor($request));
@@ -38,18 +42,19 @@ class RefundController extends Controller
         if (! $refund) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay yeu cau hoan tien',
+                'message' => 'Không tìm thấy yêu cầu hoàn tiền',
                 'data' => null,
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Lay chi tiet yeu cau hoan tien thanh cong',
+            'message' => 'Lấy chi tiết yêu cầu hoàn tiền thành công',
             'data' => $this->refunds->serialize($refund),
         ]);
     }
 
+    // Tạo hoặc lưu dữ liệu theo nghiệp vụ của hàm.
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -62,11 +67,12 @@ class RefundController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Gui yeu cau hoan tien thanh cong',
+            'message' => 'Gửi yêu cầu hoàn tiền thành công',
             'data' => $this->refunds->serialize($refund),
         ], 201);
     }
 
+    // Cập nhật dữ liệu theo nghiệp vụ của hàm.
     public function approve(Request $request, int|string $id): JsonResponse
     {
         $data = $request->validate([
@@ -76,10 +82,11 @@ class RefundController extends Controller
 
         return $this->transitionResponse(
             $this->refunds->approve((int) $id, $this->authenticatedActor($request), $data['admin_note'] ?? $data['note'] ?? null),
-            'Duyet yeu cau hoan tien thanh cong',
+            'Duyệt yêu cầu hoàn tiền thành công',
         );
     }
 
+    // Cập nhật dữ liệu theo nghiệp vụ của hàm.
     public function reject(Request $request, int|string $id): JsonResponse
     {
         $data = $request->validate([
@@ -89,10 +96,11 @@ class RefundController extends Controller
 
         return $this->transitionResponse(
             $this->refunds->reject((int) $id, $this->authenticatedActor($request), $data['admin_note'] ?? $data['note'] ?? null),
-            'Tu choi yeu cau hoan tien thanh cong',
+            'Từ chối yêu cầu hoàn tiền thành công',
         );
     }
 
+    // Thực hiện refunding.
     public function refunding(Request $request, int|string $id): JsonResponse
     {
         $data = $request->validate([
@@ -102,10 +110,11 @@ class RefundController extends Controller
 
         return $this->transitionResponse(
             $this->refunds->markRefunding((int) $id, $this->authenticatedActor($request), $data['admin_note'] ?? $data['note'] ?? null),
-            'Cap nhat yeu cau hoan tien dang xu ly thanh cong',
+            'Cập nhật yêu cầu hoàn tiền đang xử lý thành công',
         );
     }
 
+    // Thực hiện completed.
     public function completed(Request $request, int|string $id): JsonResponse
     {
         $data = $request->validate([
@@ -121,16 +130,17 @@ class RefundController extends Controller
 
         return $this->transitionResponse(
             $this->refunds->complete((int) $id, $this->authenticatedActor($request), $data),
-            'Hoan tat yeu cau hoan tien thanh cong',
+            'Hoàn tất yêu cầu hoàn tiền thành công',
         );
     }
 
+    // Thực hiện chuyển trạng thái phản hồi.
     private function transitionResponse($refund, string $message): JsonResponse
     {
         if (! $refund) {
             return response()->json([
                 'success' => false,
-                'message' => 'Khong tim thay yeu cau hoan tien',
+                'message' => 'Không tìm thấy yêu cầu hoàn tiền',
                 'data' => null,
             ], 404);
         }
@@ -142,6 +152,7 @@ class RefundController extends Controller
         ]);
     }
 
+    // Thực hiện authenticated người thực hiện.
     private function authenticatedActor(Request $request): array
     {
         return (array) $request->attributes->get('auth_user', []);

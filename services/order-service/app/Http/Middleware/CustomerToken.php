@@ -8,8 +8,11 @@ use Illuminate\Http\Request;
 
 class CustomerToken
 {
+
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(private readonly AuthTokenService $tokens) {}
 
+    // Xử lý dữ liệu theo nghiệp vụ của hàm.
     public function handle(Request $request, Closure $next): mixed
     {
         $payload = $this->tokens->payloadFromRequest($request);

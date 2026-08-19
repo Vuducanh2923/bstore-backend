@@ -18,18 +18,20 @@ class WarrantyService
 
     private const MAX_PER_PAGE = 100;
 
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(private readonly UserDirectoryService $users) {}
 
+    // Tạo hoặc lưu dữ liệu theo nghiệp vụ của hàm.
     public function create(int $customerId, array $data): WarrantyRequest
     {
         return DB::connection('bstore_order')->transaction(function () use ($customerId, $data): WarrantyRequest {
             $order = Order::with('items')->lockForUpdate()->find((int) $data['order_id']);
 
             if (! $order) {
-                throw ValidationException::withMessages(['order_id' => ['Don hang khong ton tai']]);
+                throw ValidationException::withMessages(['order_id' => ['Đơn hàng không tồn tại']]);
             }
             if ((int) $order->user_id !== $customerId) {
-                throw new AuthorizationException('Don hang khong thuoc khach hang');
+                throw new AuthorizationException('Đơn hàng không thuộc khách hàng');
             }
             if (! in_array(strtolower((string) $order->status), [
                 Order::STATUS_DELIVERED,
@@ -40,18 +42,18 @@ class WarrantyService
 
             $item = $order->items->firstWhere('id', (int) $data['order_item_id']);
             if (! $item) {
-                throw ValidationException::withMessages(['order_item_id' => ['San pham khong thuoc don hang']]);
+                throw ValidationException::withMessages(['order_item_id' => ['Sản phẩm không thuộc đơn hàng']]);
             }
 
             $policy = $this->warrantyPolicy((int) $item->product_id, (int) $item->product_variant_id);
             if (! $policy || (int) $policy->duration_months <= 0 || ! (bool) $policy->repair_support) {
-                throw ValidationException::withMessages(['order_item_id' => ['San pham khong co chinh sach bao hanh']]);
+                throw ValidationException::withMessages(['order_item_id' => ['Sản phẩm không có chính sách bảo hành']]);
             }
 
             $start = Carbon::parse($order->delivered_at ?: $order->updated_at ?: $order->created_at)->startOfDay();
             $end = $start->copy()->addMonthsNoOverflow((int) $policy->duration_months);
             if (today()->gt($end)) {
-                throw ValidationException::withMessages(['order_item_id' => ['San pham da het han bao hanh']]);
+                throw ValidationException::withMessages(['order_item_id' => ['Sản phẩm đã hết hạn bảo hành']]);
             }
 
             $duplicate = WarrantyRequest::query()
@@ -61,7 +63,7 @@ class WarrantyService
                 ->lockForUpdate()
                 ->exists();
             if ($duplicate) {
-                throw new WarrantyConflictException('San pham da co yeu cau bao hanh dang xu ly');
+                throw new WarrantyConflictException('Sản phẩm đã có yêu cầu bảo hành đang xử lý');
             }
 
             $warranty = WarrantyRequest::create([
@@ -83,6 +85,7 @@ class WarrantyService
         });
     }
 
+    // Thực hiện khách hàng danh sách.
     public function customerList(int $customerId, array $filters): LengthAwarePaginator
     {
         return $this->filteredQuery($filters)
@@ -90,11 +93,13 @@ class WarrantyService
             ->paginate($this->perPage($filters));
     }
 
+    // Thực hiện quản trị danh sách.
     public function adminList(array $filters): LengthAwarePaginator
     {
         return $this->filteredQuery($filters, true)->paginate($this->perPage($filters));
     }
 
+    // Thực hiện khách hàng chi tiết.
     public function customerDetail(int $customerId, int $id): ?WarrantyRequest
     {
         $warranty = WarrantyRequest::with(['order', 'orderItem'])->find($id);
@@ -102,12 +107,13 @@ class WarrantyService
             return null;
         }
         if ((int) $warranty->user_id !== $customerId) {
-            throw new AuthorizationException('Khong duoc xem yeu cau bao hanh cua khach hang khac');
+            throw new AuthorizationException('Không được xem yêu cầu bảo hành của khách hàng khác');
         }
 
         return $this->hydrate($warranty, true);
     }
 
+    // Thực hiện quản trị chi tiết.
     public function adminDetail(int $id): ?WarrantyRequest
     {
         $warranty = WarrantyRequest::with(['order', 'orderItem'])->find($id);
@@ -115,11 +121,13 @@ class WarrantyService
         return $warranty ? $this->hydrate($warranty, true) : null;
     }
 
+    // Xóa hoặc hủy dữ liệu theo nghiệp vụ của hàm.
     public function cancel(int $customerId, int $id): ?WarrantyRequest
     {
         return $this->transition($id, WarrantyRequest::STATUS_PENDING, WarrantyRequest::STATUS_CANCELLED, null, $customerId);
     }
 
+    // Cập nhật dữ liệu theo nghiệp vụ của hàm.
     public function approve(int $id, array $actor, ?string $note): ?WarrantyRequest
     {
         return DB::connection('bstore_order')->transaction(function () use ($id, $actor, $note) {
@@ -140,6 +148,7 @@ class WarrantyService
         });
     }
 
+    // Cập nhật dữ liệu theo nghiệp vụ của hàm.
     public function reject(int $id, array $actor, string $reason): ?WarrantyRequest
     {
         return DB::connection('bstore_order')->transaction(function () use ($id, $actor, $reason) {
@@ -159,16 +168,19 @@ class WarrantyService
         });
     }
 
+    // Thực hiện đang xử lý.
     public function processing(int $id, ?string $note): ?WarrantyRequest
     {
         return $this->transition($id, WarrantyRequest::STATUS_APPROVED, WarrantyRequest::STATUS_PROCESSING, $note);
     }
 
+    // Thực hiện complete.
     public function complete(int $id, ?string $note): ?WarrantyRequest
     {
         return $this->transition($id, WarrantyRequest::STATUS_PROCESSING, WarrantyRequest::STATUS_COMPLETED, $note);
     }
 
+    // Thực hiện hydrate.
     public function hydrate(WarrantyRequest $warranty, bool $withCustomer = false): WarrantyRequest
     {
         $item = $warranty->orderItem;
@@ -192,6 +204,7 @@ class WarrantyService
         return $warranty;
     }
 
+    // Thực hiện filtered query.
     private function filteredQuery(array $filters, bool $admin = false)
     {
         $query = WarrantyRequest::with(['order', 'orderItem']);
@@ -222,6 +235,7 @@ class WarrantyService
         return $query->orderByDesc('created_at')->orderByDesc('id');
     }
 
+    // Thực hiện chuyển trạng thái.
     private function transition(int $id, string $from, string $to, ?string $note = null, ?int $customerId = null): ?WarrantyRequest
     {
         return DB::connection('bstore_order')->transaction(function () use ($id, $from, $to, $note, $customerId) {
@@ -230,7 +244,7 @@ class WarrantyService
                 return null;
             }
             if ($customerId !== null && (int) $warranty->user_id !== $customerId) {
-                throw new AuthorizationException('Khong duoc cap nhat yeu cau bao hanh cua khach hang khac');
+                throw new AuthorizationException('Không được cập nhật yêu cầu bảo hành của khách hàng khác');
             }
             $this->assertStatus($warranty, $from);
             $values = ['status' => $to];
@@ -246,23 +260,26 @@ class WarrantyService
         });
     }
 
+    // Thực hiện assert trạng thái.
     private function assertStatus(WarrantyRequest $warranty, string $required): void
     {
         if ($warranty->status !== $required) {
-            throw new WarrantyConflictException("Chi duoc cap nhat yeu cau bao hanh dang {$required}");
+            throw new WarrantyConflictException("Chỉ được cập nhật yêu cầu bảo hành đang {$required}");
         }
     }
 
+    // Thực hiện assert still eligible.
     private function assertStillEligible(WarrantyRequest $warranty): void
     {
         if (! $warranty->order || ! $warranty->orderItem || (int) $warranty->orderItem->order_id !== (int) $warranty->order_id) {
-            throw ValidationException::withMessages(['order_item_id' => ['San pham khong thuoc don hang']]);
+            throw ValidationException::withMessages(['order_item_id' => ['Sản phẩm không thuộc đơn hàng']]);
         }
         if (today()->gt(Carbon::parse($warranty->warranty_end_date))) {
-            throw ValidationException::withMessages(['warranty_end_date' => ['San pham da het han bao hanh']]);
+            throw ValidationException::withMessages(['warranty_end_date' => ['Sản phẩm đã hết hạn bảo hành']]);
         }
     }
 
+    // Thực hiện bảo hành policy.
     private function warrantyPolicy(int $productId, int $variantId): ?object
     {
         try {
@@ -279,10 +296,11 @@ class WarrantyService
         } catch (Throwable $exception) {
             report($exception);
 
-            throw ValidationException::withMessages(['product_id' => ['Khong the xac minh chinh sach bao hanh tu Catalog']]);
+            throw ValidationException::withMessages(['product_id' => ['Không thể xác minh chính sách bảo hành từ Catalog']]);
         }
     }
 
+    // Thực hiện per trang.
     private function perPage(array $filters): int
     {
         return min(self::MAX_PER_PAGE, max(1, (int) ($filters['per_page'] ?? $filters['limit'] ?? self::DEFAULT_PER_PAGE)));

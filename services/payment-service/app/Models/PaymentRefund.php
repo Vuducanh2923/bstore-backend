@@ -38,6 +38,7 @@ class PaymentRefund extends Model
         'completed_at' => 'datetime',
     ];
 
+    // Thực hiện thanh toán.
     public function payment()
     {
         return $this->belongsTo(Payment::class);

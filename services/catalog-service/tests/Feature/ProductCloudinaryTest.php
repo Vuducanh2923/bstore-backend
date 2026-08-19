@@ -8,6 +8,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
+// Thực hiện fake sản phẩm hình ảnh.
 function fakeProductImage(): UploadedFile
 {
     return UploadedFile::fake()->createWithContent(
@@ -259,6 +260,7 @@ test('admin delete product removes cloudinary images before deleting records', f
     ], 'bstore_catalog');
 });
 
+// Thực hiện cloudinary sản phẩm dữ liệu gửi.
 function cloudinaryProductPayload(string $name): array
 {
     return [

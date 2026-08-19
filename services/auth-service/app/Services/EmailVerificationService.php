@@ -27,6 +27,7 @@ class EmailVerificationService
 
     private const MAX_SEND_ATTEMPTS = 3;
 
+    // Tạo hoặc lưu otp.
     public function createOtp(string $email, string $type): array
     {
         $email = $this->normalizeEmail($email);
@@ -47,12 +48,14 @@ class EmailVerificationService
         return [$verification, $otpCode];
     }
 
+    // Gửi hoặc phát đăng ký otp.
     public function sendRegisterOtp(string $email, string $otpCode): void
     {
         Mail::to($this->normalizeEmail($email))
             ->queue(new RegisterOtpMail($otpCode, self::OTP_TTL_MINUTES));
     }
 
+    // Gửi hoặc phát forgot mật khẩu otp.
     public function sendForgotPasswordOtp(string $email, string $otpCode): void
     {
         $email = $this->normalizeEmail($email);
@@ -75,6 +78,7 @@ class EmailVerificationService
         }
     }
 
+    // Thực hiện xác minh otp.
     public function verifyOtp(string $email, string $otpCode, string $type, ?string $ip = null, bool $verifiedOnly = false): array
     {
         $email = $this->normalizeEmail($email);
@@ -103,21 +107,25 @@ class EmailVerificationService
         return ['status' => self::STATUS_VERIFIED, 'verification' => $verification];
     }
 
+    // Thực hiện too many send attempts.
     public function tooManySendAttempts(string $email, string $type, ?string $ip = null): bool
     {
         return RateLimiter::tooManyAttempts($this->sendKey($email, $type, $ip), self::MAX_SEND_ATTEMPTS);
     }
 
+    // Thực hiện hit send attempt.
     public function hitSendAttempt(string $email, string $type, ?string $ip = null): void
     {
         RateLimiter::hit($this->sendKey($email, $type, $ip), 60);
     }
 
+    // Làm mới hoặc đặt lại forgot mật khẩu otps.
     public function clearForgotPasswordOtps(string $email): void
     {
         $this->clearOtps($email, EmailVerification::TYPE_FORGOT_PASSWORD);
     }
 
+    // Làm mới hoặc đặt lại otps.
     public function clearOtps(string $email, string $type): int
     {
         return EmailVerification::query()
@@ -126,16 +134,19 @@ class EmailVerificationService
             ->delete();
     }
 
+    // Chuẩn hóa email.
     public function normalizeEmail(string $email): string
     {
         return strtolower(trim($email));
     }
 
+    // Thực hiện xác minh khóa.
     private function verifyKey(string $email, string $type, ?string $ip): string
     {
         return 'otp:verify:'.sha1($type.'|'.$this->normalizeEmail($email).'|'.($ip ?: 'unknown'));
     }
 
+    // Gửi hoặc phát khóa.
     private function sendKey(string $email, string $type, ?string $ip): string
     {
         return 'otp:send:'.sha1($type.'|'.$this->normalizeEmail($email).'|'.($ip ?: 'unknown'));

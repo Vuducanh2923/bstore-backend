@@ -9,6 +9,8 @@ use Throwable;
 
 class CustomerEmailClient
 {
+
+    // Thực hiện email cho người dùng.
     public function emailForUser(int $userId): ?string
     {
         $baseUrl = rtrim((string) config('services.auth.url'), '/');
@@ -38,6 +40,7 @@ class CustomerEmailClient
         return filter_var($email, FILTER_VALIDATE_EMAIL) ? (string) $email : null;
     }
 
+    // Thực hiện yêu cầu.
     private function request(): PendingRequest
     {
         return Http::acceptJson()

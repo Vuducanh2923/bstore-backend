@@ -27,6 +27,7 @@ class InventoryTransaction extends Model
         'created_by' => 'integer',
     ];
 
+    // Thực hiện biến thể.
     public function variant()
     {
         return $this->belongsTo(ProductVariant::class, 'product_variant_id');

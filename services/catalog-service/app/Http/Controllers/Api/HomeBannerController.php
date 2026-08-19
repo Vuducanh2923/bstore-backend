@@ -32,8 +32,10 @@ class HomeBannerController extends Controller
         'uploads/banners/pc-gaming.jpg' => 'https://res.cloudinary.com/demo/image/upload/c_fill,w_600,h_250,q_auto,f_auto/bike.jpg',
     ];
 
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(private readonly CatalogCache $cache) {}
 
+    // Lấy toàn bộ dữ liệu.
     public function index(): JsonResponse
     {
         return response()->json([
@@ -46,6 +48,7 @@ class HomeBannerController extends Controller
         ]);
     }
 
+    // Thực hiện đang hoạt động banners bởi position.
     private function activeBannersByPosition(): array
     {
         $databaseBanners = $this->activeDatabaseBannersByPosition();
@@ -72,6 +75,7 @@ class HomeBannerController extends Controller
         return $result;
     }
 
+    // Thực hiện đang hoạt động cơ sở dữ liệu banners bởi position.
     private function activeDatabaseBannersByPosition(): array
     {
         $result = $this->emptyPositionResult();
@@ -106,6 +110,7 @@ class HomeBannerController extends Controller
         return $result;
     }
 
+    // Thực hiện cơ sở dữ liệu banner dữ liệu gửi.
     private function databaseBannerPayload(Banner $banner, bool $hasDisplaySlot): array
     {
         $payload = $banner->toArray();
@@ -115,11 +120,13 @@ class HomeBannerController extends Controller
         return $payload;
     }
 
+    // Thực hiện rỗng position kết quả.
     private function emptyPositionResult(): array
     {
         return array_fill_keys(self::POSITIONS, []);
     }
 
+    // Kiểm tra any banner.
     private function hasAnyBanner(array $banners): bool
     {
         foreach ($banners as $items) {
@@ -131,6 +138,7 @@ class HomeBannerController extends Controller
         return false;
     }
 
+    // Thực hiện position cho slot.
     private function positionForSlot(int $slot): string
     {
         $positionsBySlot = array_flip(self::POSITION_SLOTS);
@@ -138,6 +146,7 @@ class HomeBannerController extends Controller
         return $positionsBySlot[$slot] ?? 'hero_main';
     }
 
+    // Lấy banner cấu hình.
     private function readBannerConfig(): array
     {
         $path = storage_path(self::FILE_PATH);
@@ -155,12 +164,14 @@ class HomeBannerController extends Controller
         return $decoded;
     }
 
+    // Thực hiện write mặc định banner cấu hình.
     private function writeDefaultBannerConfig(string $path): void
     {
         File::ensureDirectoryExists(dirname($path));
         File::put($path, json_encode($this->defaultBannerConfig(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE).PHP_EOL);
     }
 
+    // Thực hiện mặc định banner cấu hình.
     private function defaultBannerConfig(): array
     {
         return [
@@ -194,6 +205,7 @@ class HomeBannerController extends Controller
         ];
     }
 
+    // Thực hiện cùng resolvable hình ảnh url.
     private function withResolvableImageUrl(array $banner): array
     {
         $banner['image_url'] = $this->resolveImageUrl($banner['image_url'] ?? null);
@@ -201,6 +213,7 @@ class HomeBannerController extends Controller
         return $banner;
     }
 
+    // Xây dựng hoặc chuyển đổi hình ảnh url.
     private function resolveImageUrl(?string $value): ?string
     {
         if (! $value) {

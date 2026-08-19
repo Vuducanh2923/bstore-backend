@@ -7,6 +7,8 @@ use Illuminate\Http\Request;
 
 class InternalService
 {
+
+    // Xử lý dữ liệu theo nghiệp vụ của hàm.
     public function handle(Request $request, Closure $next): mixed
     {
         $expected = config('auth.internal_service_token');
@@ -21,7 +23,7 @@ class InternalService
         ) {
             return response()->json([
                 'success' => false,
-                'message' => 'Thong tin xac thuc noi bo khong hop le',
+                'message' => 'Thông tin xác thực nội bộ không hợp lệ',
                 'data' => null,
             ], 401);
         }

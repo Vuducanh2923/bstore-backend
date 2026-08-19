@@ -9,8 +9,11 @@ use Illuminate\Http\JsonResponse;
 
 class InternalAuthController extends Controller
 {
+
+    // Khởi tạo đối tượng và các phụ thuộc cần thiết.
     public function __construct(private readonly AuthTokenService $tokens) {}
 
+    // Thực hiện introspect.
     public function introspect(IntrospectTokenRequest $request): JsonResponse
     {
         $result = $this->tokens->validateAccessToken($request->validated('token'));
@@ -18,7 +21,7 @@ class InternalAuthController extends Controller
         if (! $result) {
             return response()->json([
                 'success' => true,
-                'message' => 'Token khong hoat dong',
+                'message' => 'Token không hoạt động',
                 'data' => ['active' => false],
             ]);
         }
@@ -28,7 +31,7 @@ class InternalAuthController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Token dang hoat dong',
+            'message' => 'Token đang hoạt động',
             'data' => [
                 'active' => true,
                 'token_type' => 'access',

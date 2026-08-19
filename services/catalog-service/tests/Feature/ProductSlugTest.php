@@ -624,6 +624,7 @@ test('slug migration adds and backfills slugs for existing products', function (
         ]);
 });
 
+// Thực hiện sản phẩm dữ liệu gửi.
 function productPayload(string $name): array
 {
     return [
@@ -635,6 +636,7 @@ function productPayload(string $name): array
     ];
 }
 
+// Thực hiện sản phẩm row.
 function productRow(string $name): array
 {
     return [

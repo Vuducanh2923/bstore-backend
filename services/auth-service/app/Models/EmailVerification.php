@@ -22,6 +22,7 @@ class EmailVerification extends Model
         'verified_at',
     ];
 
+    // Khai báo kiểu chuyển đổi cho các thuộc tính của model.
     protected function casts(): array
     {
         return [

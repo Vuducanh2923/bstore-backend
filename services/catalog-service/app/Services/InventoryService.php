@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\DB;
 
 class InventoryService
 {
+
+    // Thực hiện reserve.
     public function reserve(string $reference, array $items): array
     {
         $items = $this->normalizeItems($items);
@@ -41,7 +43,7 @@ class InventoryService
 
                 if (! $variant) {
                     throw new InventoryReservationException(
-                        'Product variant does not exist',
+                        'Biến thể sản phẩm không tồn tại',
                         409,
                         ['product_variant_id' => $variantId],
                     );
@@ -49,7 +51,7 @@ class InventoryService
 
                 if (strtolower((string) $variant->status) !== 'active') {
                     throw new InventoryReservationException(
-                        'Product variant is not active',
+                        'Biến thể sản phẩm không hoạt động',
                         409,
                         ['product_variant_id' => $variantId],
                     );
@@ -69,7 +71,7 @@ class InventoryService
 
                 if ($available < $requestedQuantity) {
                     throw new InventoryReservationException(
-                        'Insufficient inventory',
+                        'Số lượng tồn kho không đủ',
                         409,
                         [
                             'product_variant_id' => $variantId,
@@ -102,6 +104,7 @@ class InventoryService
         }, 3);
     }
 
+    // Thực hiện commit.
     public function commit(string $reference): array
     {
         return $this->transition(
@@ -114,7 +117,7 @@ class InventoryService
                     || (int) $inventory->quantity < (int) $reservation->quantity
                 ) {
                     throw new InventoryReservationException(
-                        'Inventory reservation invariant was violated',
+                        'Dữ liệu giữ tồn kho không nhất quán',
                         409,
                         ['product_variant_id' => $reservation->product_variant_id],
                     );
@@ -126,6 +129,7 @@ class InventoryService
         );
     }
 
+    // Thực hiện release.
     public function release(string $reference): array
     {
         return $this->transition(
@@ -135,7 +139,7 @@ class InventoryService
             function (Inventory $inventory, InventoryReservation $reservation): void {
                 if ((int) $inventory->reserved_quantity < (int) $reservation->quantity) {
                     throw new InventoryReservationException(
-                        'Inventory reservation invariant was violated',
+                        'Dữ liệu giữ tồn kho không nhất quán',
                         409,
                         ['product_variant_id' => $reservation->product_variant_id],
                     );
@@ -146,6 +150,7 @@ class InventoryService
         );
     }
 
+    // Thực hiện restore.
     public function restore(string $reference): array
     {
         return $this->transition(
@@ -158,6 +163,7 @@ class InventoryService
         );
     }
 
+    // Thực hiện chuyển trạng thái.
     private function transition(
         string $reference,
         string $fromStatus,
@@ -184,7 +190,7 @@ class InventoryService
 
             if ($currentStatus !== $fromStatus) {
                 throw new InventoryReservationException(
-                    "Cannot transition inventory reservation from {$currentStatus} to {$toStatus}",
+                    "Không thể chuyển trạng thái giữ tồn kho từ {$currentStatus} sang {$toStatus}",
                     409,
                     ['status' => $currentStatus],
                 );
@@ -197,7 +203,7 @@ class InventoryService
 
                 if (! $inventory) {
                     throw new InventoryReservationException(
-                        'Inventory does not exist for reserved variant',
+                        'Không tồn tại dữ liệu tồn kho cho biến thể đã được giữ',
                         409,
                         ['product_variant_id' => $reservation->product_variant_id],
                     );
@@ -225,6 +231,7 @@ class InventoryService
         }, 3);
     }
 
+    // Chuẩn hóa mặt hàng.
     private function normalizeItems(array $items): array
     {
         $normalized = [];
@@ -245,6 +252,7 @@ class InventoryService
         return $normalized;
     }
 
+    // Thực hiện reservation dòng.
     private function reservationRows(string $reference, bool $lock = true): Collection
     {
         $query = InventoryReservation::query()
@@ -258,6 +266,7 @@ class InventoryService
         return $query->get();
     }
 
+    // Thực hiện locked inventories.
     private function lockedInventories(array $variantIds): Collection
     {
         return Inventory::query()
@@ -268,6 +277,7 @@ class InventoryService
             ->keyBy('product_variant_id');
     }
 
+    // Thực hiện assert same mặt hàng.
     private function assertSameItems(Collection $reservations, array $items): void
     {
         $existing = $reservations
@@ -278,7 +288,7 @@ class InventoryService
 
         if ($existing !== $items) {
             throw new InventoryReservationException(
-                'Reservation reference already exists with different items',
+                'Mã tham chiếu giữ tồn kho đã tồn tại với danh sách sản phẩm khác',
                 409,
             );
         }
@@ -286,17 +296,19 @@ class InventoryService
         $this->singleStatus($reservations);
     }
 
+    // Thực hiện single trạng thái.
     private function singleStatus(Collection $reservations): string
     {
         $statuses = $reservations->pluck('status')->unique()->values();
 
         if ($statuses->count() !== 1) {
-            throw new InventoryReservationException('Inventory reservation has inconsistent item states', 409);
+            throw new InventoryReservationException('Các mục giữ tồn kho có trạng thái không nhất quán', 409);
         }
 
         return (string) $statuses->first();
     }
 
+    // Thực hiện reservation dữ liệu gửi.
     private function reservationPayload(string $reference, Collection $reservations): array
     {
         return [
@@ -310,6 +322,7 @@ class InventoryService
         ];
     }
 
+    // Thực hiện ghi nhận giao dịch.
     private function recordTransaction(string $reference, int $variantId, string $type, int $quantity): void
     {
         InventoryTransaction::create([

@@ -28,6 +28,10 @@ Route::get('/products/new', [ProductController::class, 'newProducts']);
 Route::get('/products/{id}', [ProductController::class, 'showById'])->whereNumber('id');
 Route::get('/products/{slug}', [ProductController::class, 'show']);
 
+Route::middleware('customer.token')->group(function (): void {
+    Route::post('/uploads/avatars', [UploadController::class, 'avatar']);
+});
+
 Route::middleware('admin.token')->group(function (): void {
     Route::post('/uploads/images', [UploadController::class, 'image']);
 

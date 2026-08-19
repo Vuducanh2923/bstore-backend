@@ -24,6 +24,7 @@ class OrderDiscountService
         return $this->resolveDiscounts($requestedDiscounts, $subtotal, $customerId, false);
     }
 
+    // Xây dựng hoặc chuyển đổi discounts.
     private function resolveDiscounts(
         array $requestedDiscounts,
         float $subtotal,
@@ -36,7 +37,7 @@ class OrderDiscountService
 
         if (! Schema::connection('bstore_order')->hasTable('discounts')) {
             throw ValidationException::withMessages([
-                'discounts' => ['He thong ma giam gia chua san sang'],
+                'discounts' => ['Hệ thống mã giảm giá chưa sẵn sàng'],
             ]);
         }
 
@@ -57,7 +58,7 @@ class OrderDiscountService
                 $query->whereRaw('LOWER(code) = ?', [strtolower($discountCode)]);
             } else {
                 throw ValidationException::withMessages([
-                    'discounts' => ['Ma giam gia khong hop le'],
+                    'discounts' => ['Mã giảm giá không hợp lệ'],
                 ]);
             }
 
@@ -65,13 +66,13 @@ class OrderDiscountService
 
             if (! $discount || ($discountCode !== '' && strcasecmp((string) $discount->code, $discountCode) !== 0)) {
                 throw ValidationException::withMessages([
-                    'discounts' => ['Khong tim thay ma giam gia hop le'],
+                    'discounts' => ['Không tìm thấy mã giảm giá hợp lệ'],
                 ]);
             }
 
             if (isset($seen[$discount->id])) {
                 throw ValidationException::withMessages([
-                    'discounts' => ['Khong duoc ap dung trung ma giam gia'],
+                    'discounts' => ['Không được áp dụng trùng mã giảm giá'],
                 ]);
             }
 
@@ -82,7 +83,7 @@ class OrderDiscountService
                 'percent', 'percentage' => $subtotal * min(max((float) $discount->value, 0), 100) / 100,
                 'fixed', 'amount', 'flat', 'fixed_amount' => max((float) $discount->value, 0),
                 default => throw ValidationException::withMessages([
-                    'discounts' => ["Loai ma giam gia {$discount->code} khong duoc ho tro"],
+                    'discounts' => ["Loại mã giảm giá {$discount->code} không được hỗ trợ"],
                 ]),
             };
 
@@ -115,11 +116,12 @@ class OrderDiscountService
         })->all();
     }
 
+    // Kiểm tra usable.
     private function ensureUsable(Discount $discount, float $subtotal, int $customerId): void
     {
         if (strtolower((string) $discount->status) !== 'active') {
             throw ValidationException::withMessages([
-                'discounts' => ["Ma giam gia {$discount->code} khong hoat dong"],
+                'discounts' => ["Mã giảm giá {$discount->code} không hoạt động"],
             ]);
         }
 
@@ -127,25 +129,25 @@ class OrderDiscountService
 
         if ($discount->start_date && $now->lt($discount->start_date)) {
             throw ValidationException::withMessages([
-                'discounts' => ["Ma giam gia {$discount->code} chua co hieu luc"],
+                'discounts' => ["Mã giảm giá {$discount->code} chưa có hiệu lực"],
             ]);
         }
 
         if ($discount->end_date && $now->gt($discount->end_date)) {
             throw ValidationException::withMessages([
-                'discounts' => ["Ma giam gia {$discount->code} da het han"],
+                'discounts' => ["Mã giảm giá {$discount->code} đã hết hạn"],
             ]);
         }
 
         if ((float) $discount->min_order_amount > $subtotal) {
             throw ValidationException::withMessages([
-                'discounts' => ["Don hang chua dat gia tri toi thieu cua ma {$discount->code}"],
+                'discounts' => ["Đơn hàng chưa đạt giá trị tối thiểu của mã {$discount->code}"],
             ]);
         }
 
         if ((int) $discount->usage_limit > 0 && (int) $discount->used_count >= (int) $discount->usage_limit) {
             throw ValidationException::withMessages([
-                'discounts' => ["Ma giam gia {$discount->code} da het luot su dung"],
+                'discounts' => ["Mã giảm giá {$discount->code} đã hết lượt sử dụng"],
             ]);
         }
 
@@ -156,7 +158,7 @@ class OrderDiscountService
 
             if ($customerUsage >= (int) $discount->usage_limit_per_customer) {
                 throw ValidationException::withMessages([
-                    'discounts' => ["Khach hang da het luot su dung ma {$discount->code}"],
+                    'discounts' => ["Khách hàng đã hết lượt sử dụng mã {$discount->code}"],
                 ]);
             }
         }
